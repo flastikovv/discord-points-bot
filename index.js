@@ -1,5 +1,4 @@
 require("dotenv").config();
-const cron = require("node-cron");
 const {
   Client,
   GatewayIntentBits,
@@ -11,21 +10,22 @@ const {
   ButtonStyle,
   EmbedBuilder,
 } = require("discord.js");
+const cron = require("node-cron");
 const Database = require("better-sqlite3");
 const db = new Database("bot.db");
 
-// ================= НАСТРОЙКИ =================
-const HOUR = 3600;
+// ================== НАСТРОЙКИ ==================
 const VOICE_POINTS_PER_HOUR = 10;
+const HOUR = 3600;
 
 const SHOP_ITEMS = [
   { id: "50k", label: "💵 50.000$", cost: 100 },
   { id: "100k", label: "💵 100.000$", cost: 180 },
-  { id: "spank10", label: "💊 Spank x10", cost: 120 },
+  { id: "spank", label: "💊 Spank x10", cost: 120 },
   { id: "shotgun", label: "🔫 Assault Shotgun", cost: 300 },
 ];
 
-// ================= БАЗА =================
+// ================== БАЗА ==================
 db.exec(`
 CREATE TABLE IF NOT EXISTS points (
   guild_id TEXT,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS points (
   PRIMARY KEY (guild_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS user_reports (
+CREATE TABLE IF NOT EXISTS reports (
   guild_id TEXT,
   user_id TEXT,
   channel_id TEXT,
@@ -46,11 +46,11 @@ CREATE TABLE IF NOT EXISTS submissions (
   guild_id TEXT,
   user_id TEXT,
   channel_id TEXT,
-  delta INTEGER,
+  points INTEGER,
   status TEXT
 );
 
-CREATE TABLE IF NOT EXISTS voice_sessions (
+CREATE TABLE IF NOT EXISTS voice (
   guild_id TEXT,
   user_id TEXT,
   joined_at INTEGER,
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS voice_sessions (
 
 const now = () => Math.floor(Date.now() / 1000);
 
-// ================= КЛИЕНТ =================
+// ================== КЛИЕНТ ==================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -72,17 +72,13 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ================= ХЕЛПЕРЫ =================
-function isMod(member) {
-  return member.roles.cache.some(r =>
-    process.env.MOD_ROLE_NAMES.split(",").includes(r.name)
-  );
-}
-
+// ================== ХЕЛПЕРЫ ==================
 function getPoints(g, u) {
-  return db.prepare(
-    "SELECT points FROM points WHERE guild_id=? AND user_id=?"
-  ).get(g, u)?.points || 0;
+  return (
+    db.prepare(
+      "SELECT points FROM points WHERE guild_id=? AND user_id=?"
+    ).get(g, u)?.points || 0
+  );
 }
 
 function addPoints(g, u, p) {
@@ -101,17 +97,25 @@ function removePoints(g, u, p) {
   return true;
 }
 
-// ================= READY =================
+function isMod(member) {
+  return member.roles.cache.some(r =>
+    process.env.MOD_ROLE_NAMES.split(",").includes(r.name)
+  );
+}
+
+// ================== READY ==================
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   const guild = client.guilds.cache.get(process.env.GUILD_ID);
   if (!guild) return;
 
-  // Кнопка "Создать отчёт"
-  const reportChannel = guild.channels.cache.find(c => c.name === process.env.REPORT_CHANNEL_NAME);
+  // КНОПКА СОЗДАНИЯ ОТЧЁТА
+  const reportChannel = guild.channels.cache.find(
+    c => c.name === process.env.REPORT_CHANNEL_NAME
+  );
   if (reportChannel) {
     await reportChannel.send({
-      content: "Нажми кнопку, чтобы создать личный канал отчёта",
+      content: "Нажми кнопку, чтобы создать **личный канал отчёта**",
       components: [
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -123,8 +127,41 @@ client.once("ready", async () => {
     });
   }
 
-  // Магазин
-  const shop = guild.channels.cache.find(c => c.name === process.env.SHOP_CHANNEL_NAME);
+  // ЛИДЕРБОРД
+  const leaderboard = guild.channels.cache.find(
+    c => c.name === process.env.LEADERBOARD_CHANNEL_NAME
+  );
+  if (leaderboard) {
+    await leaderboard.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🏆 Лидерборд")
+          .setDescription("Нажми кнопку для обновления")
+          .setColor(0x2ecc71),
+      ],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("refresh_top")
+            .setLabel("🔄 Обновить")
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId("my_balance")
+            .setLabel("📊 Мой баланс")
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId("open_shop")
+            .setLabel("🛒 Магазин")
+            .setStyle(ButtonStyle.Primary)
+        ),
+      ],
+    });
+  }
+
+  // МАГАЗИН
+  const shop = guild.channels.cache.find(
+    c => c.name === process.env.SHOP_CHANNEL_NAME
+  );
   if (shop) {
     const embed = new EmbedBuilder()
       .setTitle("🛒 Магазин")
@@ -145,6 +182,7 @@ client.once("ready", async () => {
     await shop.send({ embeds: [embed], components: [row] });
   }
 
+  // АВТОСБРОС
   cron.schedule("0 0 1 * *", () => {
     db.prepare("DELETE FROM points").run();
     guild.channels.cache
@@ -153,32 +191,29 @@ client.once("ready", async () => {
   });
 });
 
-// ================= INTERACTIONS =================
+// ================== INTERACTIONS ==================
 client.on("interactionCreate", async i => {
   if (!i.isButton()) return;
-
-  const guild = i.guild;
-  const g = guild.id;
+  const g = i.guild.id;
   const u = i.user.id;
-  const log = guild.channels.cache.find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME);
 
-  // Создание ЛИЧНОГО КАНАЛА отчёта
+  // СОЗДАТЬ ОТЧЁТ
   if (i.customId === "create_report") {
     const exists = db.prepare(
-      "SELECT channel_id FROM user_reports WHERE guild_id=? AND user_id=?"
+      "SELECT channel_id FROM reports WHERE guild_id=? AND user_id=?"
     ).get(g, u);
 
     if (exists) {
-      return i.reply({ content: "❌ У тебя уже есть канал отчёта", ephemeral: true });
+      return i.reply({ content: "❌ У тебя уже есть отчёт", ephemeral: true });
     }
 
-    const modRoles = guild.roles.cache.filter(r =>
+    const modRoles = i.guild.roles.cache.filter(r =>
       process.env.MOD_ROLE_NAMES.split(",").includes(r.name)
     );
 
     const overwrites = [
       {
-        id: guild.roles.everyone,
+        id: i.guild.roles.everyone,
         deny: [PermissionsBitField.Flags.ViewChannel],
       },
       {
@@ -190,12 +225,12 @@ client.on("interactionCreate", async i => {
         ],
       },
       {
-        id: guild.members.me.id,
+        id: i.guild.members.me.id,
         allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
       },
     ];
 
-    modRoles.forEach(r => {
+    modRoles.forEach(r =>
       overwrites.push({
         id: r.id,
         allow: [
@@ -203,23 +238,55 @@ client.on("interactionCreate", async i => {
           PermissionsBitField.Flags.SendMessages,
           PermissionsBitField.Flags.ReadMessageHistory,
         ],
-      });
-    });
+      })
+    );
 
-    const channel = await guild.channels.create({
+    const channel = await i.guild.channels.create({
       name: `отчёт-${i.user.username}`,
       type: ChannelType.GuildText,
       permissionOverwrites: overwrites,
     });
 
+    await channel.send(
+      "📸 **Инструкция**\n\nОтправляй **скриншот** и в тексте пиши:\n`+количество`\n\nПример:\n`+25`"
+    );
+
     db.prepare(
-      "INSERT INTO user_reports VALUES (?,?,?)"
+      "INSERT INTO reports VALUES (?,?,?)"
     ).run(g, u, channel.id);
 
-    return i.reply({ content: "✅ Личный канал отчёта создан", ephemeral: true });
+    return i.reply({ content: "✅ Канал отчёта создан", ephemeral: true });
   }
 
-  // Магазин
+  // БАЛАНС
+  if (i.customId === "my_balance") {
+    return i.reply({
+      content: `💰 У тебя **${getPoints(g, u)} баллов**`,
+      ephemeral: true,
+    });
+  }
+
+  // ОБНОВИТЬ ТОП
+  if (i.customId === "refresh_top") {
+    const rows = db.prepare(
+      "SELECT user_id, points FROM points WHERE guild_id=? ORDER BY points DESC LIMIT 10"
+    ).all(g);
+
+    const text = rows.length
+      ? rows.map((r, i) => `**${i + 1}.** <@${r.user_id}> — ${r.points}`).join("\n")
+      : "Пока пусто";
+
+    return i.update({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🏆 Лидерборд")
+          .setDescription(text)
+          .setColor(0x2ecc71),
+      ],
+    });
+  }
+
+  // МАГАЗИН
   if (i.customId.startsWith("buy_")) {
     const item = SHOP_ITEMS.find(x => `buy_${x.id}` === i.customId);
     if (!item) return;
@@ -228,41 +295,20 @@ client.on("interactionCreate", async i => {
       return i.reply({ content: "❌ Недостаточно баллов", ephemeral: true });
     }
 
-    log?.send(`🛒 <@${u}> купил **${item.label}** за ${item.cost} баллов`);
+    i.guild.channels.cache
+      .find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME)
+      ?.send(`🛒 <@${u}> купил **${item.label}**`);
+
     return i.reply({ content: `✅ Куплено: ${item.label}`, ephemeral: true });
-  }
-
-  // Модерация
-  if (!isMod(i.member)) {
-    return i.reply({ content: "❌ Нет прав", ephemeral: true });
-  }
-
-  const sub = db.prepare(
-    "SELECT * FROM submissions WHERE status='pending' AND channel_id=? ORDER BY id DESC"
-  ).get(i.channel.id);
-
-  if (!sub) return;
-
-  if (i.customId === "approve") {
-    addPoints(g, sub.user_id, sub.delta);
-    db.prepare("UPDATE submissions SET status='approved' WHERE id=?").run(sub.id);
-    log?.send(`✅ ${i.user.tag} одобрил +${sub.delta} <@${sub.user_id}>`);
-    return i.reply("✅ Одобрено");
-  }
-
-  if (i.customId === "reject") {
-    db.prepare("UPDATE submissions SET status='rejected' WHERE id=?").run(sub.id);
-    log?.send(`❌ ${i.user.tag} отклонил +${sub.delta} <@${sub.user_id}>`);
-    return i.reply("❌ Отклонено");
   }
 });
 
-// ================= СООБЩЕНИЯ В КАНАЛЕ ОТЧЁТА =================
+// ================== ОТЧЁТЫ ==================
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
   const report = db.prepare(
-    "SELECT * FROM user_reports WHERE channel_id=?"
+    "SELECT * FROM reports WHERE channel_id=?"
   ).get(msg.channel.id);
   if (!report) return;
 
@@ -273,34 +319,34 @@ client.on("messageCreate", async msg => {
   if (isNaN(pts)) return;
 
   db.prepare(
-    "INSERT INTO submissions (guild_id,user_id,channel_id,delta,status) VALUES (?,?,?,?,?)"
+    "INSERT INTO submissions (guild_id,user_id,channel_id,points,status) VALUES (?,?,?,?,?)"
   ).run(msg.guild.id, msg.author.id, msg.channel.id, pts, "pending");
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("approve").setLabel("Approve").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("reject").setLabel("Reject").setStyle(ButtonStyle.Danger)
-  );
-
   await msg.reply({
-    content: `Заявка на **+${pts}** баллов`,
-    components: [row],
+    content: `Заявка на **+${pts}** баллов\nМодератор, примите решение`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("approve").setLabel("Approve").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("reject").setLabel("Reject").setStyle(ButtonStyle.Danger)
+      ),
+    ],
   });
 });
 
-// ================= ВОЙС =================
+// ================== ВОЙС ==================
 client.on("voiceStateUpdate", (o, n) => {
   const g = n.guild.id;
   const u = n.id;
 
   if (!o.channelId && n.channelId && !n.selfMute && !n.selfDeaf) {
     db.prepare(
-      "INSERT OR REPLACE INTO voice_sessions VALUES (?,?,?,?)"
+      "INSERT OR REPLACE INTO voice VALUES (?,?,?,?)"
     ).run(g, u, now(), 0);
   }
 
   if (o.channelId && !n.channelId) {
     const s = db.prepare(
-      "SELECT * FROM voice_sessions WHERE guild_id=? AND user_id=?"
+      "SELECT * FROM voice WHERE guild_id=? AND user_id=?"
     ).get(g, u);
     if (!s) return;
 
@@ -311,10 +357,9 @@ client.on("voiceStateUpdate", (o, n) => {
     if (hours > 0) addPoints(g, u, hours * VOICE_POINTS_PER_HOUR);
 
     db.prepare(
-      "INSERT OR REPLACE INTO voice_sessions VALUES (?,?,?,?)"
+      "INSERT OR REPLACE INTO voice VALUES (?,?,?,?)"
     ).run(g, u, now(), carry);
   }
 });
 
-// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
