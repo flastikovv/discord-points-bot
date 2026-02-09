@@ -15,8 +15,8 @@ const Database = require("better-sqlite3");
 const db = new Database("bot.db");
 
 // ================= НАСТРОЙКИ =================
-const VOICE_POINTS_PER_HOUR = 10;
 const HOUR = 3600;
+const VOICE_POINTS_PER_HOUR = 10;
 
 const SHOP_ITEMS = [
   { id: "50k", label: "💵 50.000$", cost: 100 },
@@ -34,10 +34,10 @@ CREATE TABLE IF NOT EXISTS points (
   PRIMARY KEY (guild_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS reports (
+CREATE TABLE IF NOT EXISTS user_reports (
   guild_id TEXT,
   user_id TEXT,
-  thread_id TEXT,
+  channel_id TEXT,
   PRIMARY KEY (guild_id, user_id)
 );
 
@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   guild_id TEXT,
   user_id TEXT,
+  channel_id TEXT,
   delta INTEGER,
   status TEXT
 );
@@ -54,13 +55,6 @@ CREATE TABLE IF NOT EXISTS voice_sessions (
   user_id TEXT,
   joined_at INTEGER,
   carry INTEGER DEFAULT 0,
-  PRIMARY KEY (guild_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS voice_stats (
-  guild_id TEXT,
-  user_id TEXT,
-  seconds INTEGER DEFAULT 0,
   PRIMARY KEY (guild_id, user_id)
 );
 `);
@@ -113,11 +107,11 @@ client.once("ready", async () => {
   const guild = client.guilds.cache.get(process.env.GUILD_ID);
   if (!guild) return;
 
-  // Кнопка создать отчёт
-  const reportCh = guild.channels.cache.find(c => c.name === process.env.REPORT_CHANNEL_NAME);
-  if (reportCh) {
-    await reportCh.send({
-      content: "Создай личную ветку для отчётов",
+  // Кнопка "Создать отчёт"
+  const reportChannel = guild.channels.cache.find(c => c.name === process.env.REPORT_CHANNEL_NAME);
+  if (reportChannel) {
+    await reportChannel.send({
+      content: "Нажми кнопку, чтобы создать личный канал отчёта",
       components: [
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -134,7 +128,9 @@ client.once("ready", async () => {
   if (shop) {
     const embed = new EmbedBuilder()
       .setTitle("🛒 Магазин")
-      .setDescription(SHOP_ITEMS.map(i => `${i.label} — **${i.cost} баллов**`).join("\n"))
+      .setDescription(
+        SHOP_ITEMS.map(i => `${i.label} — **${i.cost} баллов**`).join("\n")
+      )
       .setColor(0xf1c40f);
 
     const row = new ActionRowBuilder().addComponents(
@@ -151,7 +147,6 @@ client.once("ready", async () => {
 
   cron.schedule("0 0 1 * *", () => {
     db.prepare("DELETE FROM points").run();
-    db.prepare("DELETE FROM voice_stats").run();
     guild.channels.cache
       .find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME)
       ?.send("🔄 Автосброс баллов за месяц");
@@ -161,30 +156,67 @@ client.once("ready", async () => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async i => {
   if (!i.isButton()) return;
-  const g = i.guild.id;
-  const u = i.user.id;
-  const log = i.guild.channels.cache.find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME);
 
-  // Создание личной ветки
+  const guild = i.guild;
+  const g = guild.id;
+  const u = i.user.id;
+  const log = guild.channels.cache.find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME);
+
+  // Создание ЛИЧНОГО КАНАЛА отчёта
   if (i.customId === "create_report") {
     const exists = db.prepare(
-      "SELECT thread_id FROM reports WHERE guild_id=? AND user_id=?"
+      "SELECT channel_id FROM user_reports WHERE guild_id=? AND user_id=?"
     ).get(g, u);
 
     if (exists) {
-      return i.reply({ content: "❌ У тебя уже есть ветка", ephemeral: true });
+      return i.reply({ content: "❌ У тебя уже есть канал отчёта", ephemeral: true });
     }
 
-    const thread = await i.channel.threads.create({
+    const modRoles = guild.roles.cache.filter(r =>
+      process.env.MOD_ROLE_NAMES.split(",").includes(r.name)
+    );
+
+    const overwrites = [
+      {
+        id: guild.roles.everyone,
+        deny: [PermissionsBitField.Flags.ViewChannel],
+      },
+      {
+        id: u,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      },
+      {
+        id: guild.members.me.id,
+        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+      },
+    ];
+
+    modRoles.forEach(r => {
+      overwrites.push({
+        id: r.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      });
+    });
+
+    const channel = await guild.channels.create({
       name: `отчёт-${i.user.username}`,
-      autoArchiveDuration: 1440,
+      type: ChannelType.GuildText,
+      permissionOverwrites: overwrites,
     });
 
     db.prepare(
-      "INSERT INTO reports VALUES (?,?,?)"
-    ).run(g, u, thread.id);
+      "INSERT INTO user_reports VALUES (?,?,?)"
+    ).run(g, u, channel.id);
 
-    return i.reply({ content: "✅ Ветка создана", ephemeral: true });
+    return i.reply({ content: "✅ Личный канал отчёта создан", ephemeral: true });
   }
 
   // Магазин
@@ -196,7 +228,7 @@ client.on("interactionCreate", async i => {
       return i.reply({ content: "❌ Недостаточно баллов", ephemeral: true });
     }
 
-    log?.send(`🛒 <@${u}> купил **${item.label}** за ${item.cost}`);
+    log?.send(`🛒 <@${u}> купил **${item.label}** за ${item.cost} баллов`);
     return i.reply({ content: `✅ Куплено: ${item.label}`, ephemeral: true });
   }
 
@@ -206,8 +238,9 @@ client.on("interactionCreate", async i => {
   }
 
   const sub = db.prepare(
-    "SELECT * FROM submissions WHERE status='pending' ORDER BY id DESC"
-  ).get();
+    "SELECT * FROM submissions WHERE status='pending' AND channel_id=? ORDER BY id DESC"
+  ).get(i.channel.id);
+
   if (!sub) return;
 
   if (i.customId === "approve") {
@@ -224,10 +257,15 @@ client.on("interactionCreate", async i => {
   }
 });
 
-// ================= СООБЩЕНИЯ В ВЕТКЕ =================
+// ================= СООБЩЕНИЯ В КАНАЛЕ ОТЧЁТА =================
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
-  if (!msg.channel.isThread()) return;
+
+  const report = db.prepare(
+    "SELECT * FROM user_reports WHERE channel_id=?"
+  ).get(msg.channel.id);
+  if (!report) return;
+
   if (!msg.attachments.size) return;
   if (!msg.content.startsWith("+")) return;
 
@@ -235,8 +273,8 @@ client.on("messageCreate", async msg => {
   if (isNaN(pts)) return;
 
   db.prepare(
-    "INSERT INTO submissions (guild_id,user_id,delta,status) VALUES (?,?,?,?)"
-  ).run(msg.guild.id, msg.author.id, pts, "pending");
+    "INSERT INTO submissions (guild_id,user_id,channel_id,delta,status) VALUES (?,?,?,?,?)"
+  ).run(msg.guild.id, msg.author.id, msg.channel.id, pts, "pending");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("approve").setLabel("Approve").setStyle(ButtonStyle.Success),
