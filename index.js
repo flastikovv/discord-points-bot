@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 const cron = require("node-cron");
 const {
   Client,
@@ -15,17 +14,26 @@ const {
   REST,
   Routes,
 } = require("discord.js");
-
 const Database = require("better-sqlite3");
 const db = new Database("bot.db");
 
-// ================= DATABASE =================
+const HOUR = 3600;
+const VOICE_POINTS_PER_HOUR = 10;
+
+// ================== SHOP ==================
+const SHOP_ITEMS = [
+  { id: "money_50k", label: "💵 50.000$", cost: 100 },
+  { id: "money_100k", label: "💵 100.000$", cost: 180 },
+  { id: "spank_10", label: "💊 Spank x10", cost: 120 },
+  { id: "shotgun", label: "🔫 Assault Shotgun", cost: 300 },
+];
+
+// ================== DB ==================
 db.exec(`
 CREATE TABLE IF NOT EXISTS points (
   guild_id TEXT,
   user_id TEXT,
-  points INTEGER,
-  updated_at INTEGER,
+  points INTEGER DEFAULT 0,
   PRIMARY KEY (guild_id, user_id)
 );
 
@@ -33,6 +41,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   guild_id TEXT,
   user_id TEXT,
+  channel_id TEXT,
   delta INTEGER,
   status TEXT
 );
@@ -41,224 +50,158 @@ CREATE TABLE IF NOT EXISTS voice_sessions (
   guild_id TEXT,
   user_id TEXT,
   joined_at INTEGER,
+  carry INTEGER DEFAULT 0,
   PRIMARY KEY (guild_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS voice_stats (
   guild_id TEXT,
   user_id TEXT,
-  seconds INTEGER,
+  seconds INTEGER DEFAULT 0,
   PRIMARY KEY (guild_id, user_id)
 );
 `);
 
 const now = () => Math.floor(Date.now() / 1000);
-const monthKey = () => new Date().toISOString().slice(0, 7);
 
-// ================= CLIENT =================
+// ================== CLIENT ==================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.Channel],
 });
 
-// ================= HELPERS =================
-function addPoints(guildId, userId, pts) {
+// ================== HELPERS ==================
+function isMod(member) {
+  return member.roles.cache.some(r =>
+    process.env.MOD_ROLE_NAMES.split(",").includes(r.name)
+  );
+}
+
+function addPoints(gid, uid, pts) {
   const row = db.prepare(
     "SELECT points FROM points WHERE guild_id=? AND user_id=?"
-  ).get(guildId, userId);
+  ).get(gid, uid);
 
   if (!row) {
-    db.prepare(
-      "INSERT INTO points VALUES (?,?,?,?)"
-    ).run(guildId, userId, pts, now());
+    db.prepare("INSERT INTO points VALUES (?,?,?)").run(gid, uid, pts);
   } else {
     db.prepare(
-      "UPDATE points SET points=?, updated_at=? WHERE guild_id=? AND user_id=?"
-    ).run(row.points + pts, now(), guildId, userId);
+      "UPDATE points SET points=? WHERE guild_id=? AND user_id=?"
+    ).run(row.points + pts, gid, uid);
   }
 }
 
-function getPoints(guildId, userId) {
-  return (
-    db.prepare(
-      "SELECT points FROM points WHERE guild_id=? AND user_id=?"
-    ).get(guildId, userId)?.points || 0
-  );
+function removePoints(gid, uid, pts) {
+  const cur = getPoints(gid, uid);
+  if (cur < pts) return false;
+  db.prepare(
+    "UPDATE points SET points=? WHERE guild_id=? AND user_id=?"
+  ).run(cur - pts, gid, uid);
+  return true;
 }
 
-// ================= SLASH COMMANDS =================
-async function registerCommands() {
-  const commands = [
-    new SlashCommandBuilder().setName("my_points").setDescription("Мои баллы"),
-    new SlashCommandBuilder().setName("leaderboard").setDescription("Топ баллов"),
-    new SlashCommandBuilder().setName("my_voice").setDescription("Мой войс"),
-    new SlashCommandBuilder().setName("voice_top").setDescription("Топ войса"),
-  ].map(c => c.toJSON());
-
-  const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
-
-  if (process.env.GUILD_ID) {
-    await rest.put(
-      Routes.applicationGuildCommands(client.user.id, process.env.GUILD_ID),
-      { body: commands }
-    );
-  } else {
-    await rest.put(
-      Routes.applicationCommands(client.user.id),
-      { body: commands }
-    );
-  }
+function getPoints(gid, uid) {
+  return db.prepare(
+    "SELECT points FROM points WHERE guild_id=? AND user_id=?"
+  ).get(gid, uid)?.points || 0;
 }
 
-// ================= READY =================
+// ================== READY ==================
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-  await registerCommands();
 
-  const guild = client.guilds.cache.first();
+  const guild = client.guilds.cache.get(process.env.GUILD_ID);
   if (!guild) return;
 
-  const reportChannel = guild.channels.cache.find(
-    c => c.name === process.env.REPORT_CHANNEL_NAME
-  );
+  const shop = guild.channels.cache.find(c => c.name === process.env.SHOP_CHANNEL_NAME);
+  const log = guild.channels.cache.find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME);
 
-  if (reportChannel) {
-    await reportChannel.send({
-      content: "Нажми кнопку для создания отчёта",
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("create_report")
-            .setLabel("Создать отчёт")
-            .setStyle(ButtonStyle.Primary)
-        ),
-      ],
-    });
+  // магазин
+  if (shop) {
+    const embed = new EmbedBuilder()
+      .setTitle("🛒 Магазин наград")
+      .setDescription(
+        SHOP_ITEMS.map(i => `${i.label} — **${i.cost} баллов**`).join("\n")
+      )
+      .setColor(0xf1c40f);
+
+    const row = new ActionRowBuilder().addComponents(
+      SHOP_ITEMS.map(i =>
+        new ButtonBuilder()
+          .setCustomId(`buy_${i.id}`)
+          .setLabel(i.label)
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+
+    await shop.send({ embeds: [embed], components: [row] });
   }
 
-  // автосброс 1 числа
   cron.schedule("0 0 1 * *", () => {
     db.prepare("DELETE FROM points").run();
     db.prepare("DELETE FROM voice_stats").run();
-    console.log("MONTH RESET:", monthKey());
+    log?.send("🔄 Автосброс баллов за месяц");
   });
 });
 
-// ================= BUTTON =================
-client.on("interactionCreate", async interaction => {
-  if (interaction.isButton() && interaction.customId === "create_report") {
-    const channel = await interaction.guild.channels.create({
-      name: `отчёт-${interaction.user.username}`,
-      type: ChannelType.GuildText,
-      permissionOverwrites: [
-        {
-          id: interaction.guild.roles.everyone,
-          deny: [PermissionsBitField.Flags.ViewChannel],
-        },
-        {
-          id: interaction.user.id,
-          allow: [PermissionsBitField.Flags.ViewChannel],
-        },
-      ],
-    });
+// ================== INTERACTIONS ==================
+client.on("interactionCreate", async i => {
+  if (!i.isButton()) return;
+  const gid = i.guild.id;
+  const uid = i.user.id;
+  const log = i.guild.channels.cache.find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME);
 
-    await channel.send("Прикрепи скрин и напиши `+число`");
-    await interaction.reply({ content: "Канал создан", ephemeral: true });
-  }
+  // покупка
+  if (i.customId.startsWith("buy_")) {
+    const item = SHOP_ITEMS.find(x => `buy_${x.id}` === i.customId);
+    if (!item) return;
 
-  if (interaction.isChatInputCommand()) {
-    const gid = interaction.guild.id;
-    const uid = interaction.user.id;
-
-    if (interaction.commandName === "my_points") {
-      return interaction.reply({
-        content: `Баллы: ${getPoints(gid, uid)}`,
-        ephemeral: true,
-      });
+    if (!removePoints(gid, uid, item.cost)) {
+      return i.reply({ content: "❌ Недостаточно баллов", ephemeral: true });
     }
 
-    if (interaction.commandName === "leaderboard") {
-      const rows = db.prepare(
-        "SELECT user_id, points FROM points ORDER BY points DESC LIMIT 10"
-      ).all();
-      const text = rows.map(
-        (r, i) => `${i + 1}. <@${r.user_id}> — ${r.points}`
-      ).join("\n");
-      return interaction.reply(text || "Пусто");
-    }
-
-    if (interaction.commandName === "my_voice") {
-      const sec = db.prepare(
-        "SELECT seconds FROM voice_stats WHERE guild_id=? AND user_id=?"
-      ).get(gid, uid)?.seconds || 0;
-      return interaction.reply(`Войс: ${Math.floor(sec / 60)} мин`);
-    }
-
-    if (interaction.commandName === "voice_top") {
-      const rows = db.prepare(
-        "SELECT user_id, seconds FROM voice_stats ORDER BY seconds DESC LIMIT 10"
-      ).all();
-      const text = rows.map(
-        (r, i) => `${i + 1}. <@${r.user_id}> — ${Math.floor(r.seconds / 60)} мин`
-      ).join("\n");
-      return interaction.reply(text || "Пусто");
-    }
+    log?.send(`🛒 <@${uid}> купил **${item.label}** за ${item.cost} баллов`);
+    return i.reply({ content: `✅ Куплено: ${item.label}`, ephemeral: true });
   }
 });
 
-// ================= REPORTS =================
-client.on("messageCreate", msg => {
-  if (!msg.content.startsWith("+")) return;
-  if (!msg.attachments.size) return;
+// ================== VOICE ==================
+client.on("voiceStateUpdate", (o, n) => {
+  const gid = n.guild.id;
+  const uid = n.id;
+  const log = n.guild.channels.cache.find(c => c.name === process.env.MOD_LOG_CHANNEL_NAME);
 
-  const pts = parseInt(msg.content.slice(1));
-  if (isNaN(pts)) return;
-
-  addPoints(msg.guild.id, msg.author.id, pts);
-  msg.reply(`Начислено +${pts}`);
-});
-
-// ================= VOICE =================
-client.on("voiceStateUpdate", (oldS, newS) => {
-  const gid = newS.guild.id;
-  const uid = newS.id;
-
-  if (!oldS.channelId && newS.channelId && !newS.selfMute && !newS.selfDeaf) {
-    db.prepare("INSERT OR REPLACE INTO voice_sessions VALUES (?,?,?)")
-      .run(gid, uid, now());
+  if (!o.channelId && n.channelId && !n.selfMute && !n.selfDeaf) {
+    db.prepare(
+      "INSERT OR REPLACE INTO voice_sessions VALUES (?,?,?,?)"
+    ).run(gid, uid, now(), 0);
   }
 
-  if (oldS.channelId && !newS.channelId) {
-    const sess = db.prepare(
-      "SELECT joined_at FROM voice_sessions WHERE guild_id=? AND user_id=?"
+  if (o.channelId && !n.channelId) {
+    const s = db.prepare(
+      "SELECT * FROM voice_sessions WHERE guild_id=? AND user_id=?"
     ).get(gid, uid);
+    if (!s) return;
 
-    if (sess) {
-      const sec = now() - sess.joined_at;
-      db.prepare("DELETE FROM voice_sessions WHERE guild_id=? AND user_id=?")
-        .run(gid, uid);
+    const total = s.carry + (now() - s.joined_at);
+    const hours = Math.floor(total / HOUR);
+    const carry = total % HOUR;
 
-      const row = db.prepare(
-        "SELECT seconds FROM voice_stats WHERE guild_id=? AND user_id=?"
-      ).get(gid, uid);
-
-      if (!row) {
-        db.prepare("INSERT INTO voice_stats VALUES (?,?,?)")
-          .run(gid, uid, sec);
-      } else {
-        db.prepare(
-          "UPDATE voice_stats SET seconds=? WHERE guild_id=? AND user_id=?"
-        ).run(row.seconds + sec, gid, uid);
-      }
+    if (hours > 0) {
+      addPoints(gid, uid, hours * VOICE_POINTS_PER_HOUR);
+      log?.send(`🎙 <@${uid}> получил ${hours * VOICE_POINTS_PER_HOUR} баллов за войс`);
     }
+
+    db.prepare(
+      "INSERT OR REPLACE INTO voice_sessions VALUES (?,?,?,?)"
+    ).run(gid, uid, now(), carry);
   }
 });
 
-// ================= LOGIN =================
+// ================== LOGIN ==================
 client.login(process.env.DISCORD_TOKEN);
