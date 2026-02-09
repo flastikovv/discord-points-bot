@@ -2,7 +2,6 @@ require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
-  Partials,
   PermissionsBitField,
   ChannelType,
   ActionRowBuilder,
@@ -69,31 +68,27 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
   ],
-  partials: [Partials.Channel],
 });
 
 // ================== ХЕЛПЕРЫ ==================
 function getPoints(g, u) {
   return (
-    db.prepare(
-      "SELECT points FROM points WHERE guild_id=? AND user_id=?"
-    ).get(g, u)?.points || 0
+    db.prepare("SELECT points FROM points WHERE guild_id=? AND user_id=?")
+      .get(g, u)?.points || 0
   );
 }
 
 function addPoints(g, u, p) {
   const cur = getPoints(g, u);
-  db.prepare(
-    "INSERT OR REPLACE INTO points VALUES (?,?,?)"
-  ).run(g, u, cur + p);
+  db.prepare("INSERT OR REPLACE INTO points VALUES (?,?,?)")
+    .run(g, u, cur + p);
 }
 
 function removePoints(g, u, p) {
   const cur = getPoints(g, u);
   if (cur < p) return false;
-  db.prepare(
-    "UPDATE points SET points=? WHERE guild_id=? AND user_id=?"
-  ).run(cur - p, g, u);
+  db.prepare("UPDATE points SET points=? WHERE guild_id=? AND user_id=?")
+    .run(cur - p, g, u);
   return true;
 }
 
@@ -109,7 +104,7 @@ client.once("ready", async () => {
   const guild = client.guilds.cache.get(process.env.GUILD_ID);
   if (!guild) return;
 
-  // КНОПКА СОЗДАНИЯ ОТЧЁТА
+  // КНОПКА СОЗДАТЬ ОТЧЁТ
   const reportChannel = guild.channels.cache.find(
     c => c.name === process.env.REPORT_CHANNEL_NAME
   );
@@ -212,10 +207,7 @@ client.on("interactionCreate", async i => {
     );
 
     const overwrites = [
-      {
-        id: i.guild.roles.everyone,
-        deny: [PermissionsBitField.Flags.ViewChannel],
-      },
+      { id: i.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
       {
         id: u,
         allow: [
@@ -226,7 +218,10 @@ client.on("interactionCreate", async i => {
       },
       {
         id: i.guild.members.me.id,
-        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+        ],
       },
     ];
 
@@ -251,11 +246,41 @@ client.on("interactionCreate", async i => {
       "📸 **Инструкция**\n\nОтправляй **скриншот** и в тексте пиши:\n`+количество`\n\nПример:\n`+25`"
     );
 
-    db.prepare(
-      "INSERT INTO reports VALUES (?,?,?)"
-    ).run(g, u, channel.id);
+    db.prepare("INSERT INTO reports VALUES (?,?,?)").run(g, u, channel.id);
 
     return i.reply({ content: "✅ Канал отчёта создан", ephemeral: true });
+  }
+
+  // APPROVE / REJECT
+  if (i.customId === "approve" || i.customId === "reject") {
+    if (!isMod(i.member)) {
+      return i.reply({ content: "❌ Нет прав", ephemeral: true });
+    }
+
+    const sub = db.prepare(
+      "SELECT * FROM submissions WHERE channel_id=? AND status='pending' ORDER BY id DESC"
+    ).get(i.channel.id);
+
+    if (!sub) {
+      return i.reply({ content: "❌ Заявка не найдена", ephemeral: true });
+    }
+
+    const log = i.guild.channels.cache.find(
+      c => c.name === process.env.MOD_LOG_CHANNEL_NAME
+    );
+
+    if (i.customId === "approve") {
+      addPoints(g, sub.user_id, sub.points);
+      db.prepare("UPDATE submissions SET status='approved' WHERE id=?").run(sub.id);
+      log?.send(`✅ ${i.user.tag} одобрил +${sub.points} <@${sub.user_id}>`);
+      return i.update({ content: `✅ Одобрено (+${sub.points})`, components: [] });
+    }
+
+    if (i.customId === "reject") {
+      db.prepare("UPDATE submissions SET status='rejected' WHERE id=?").run(sub.id);
+      log?.send(`❌ ${i.user.tag} отклонил заявку <@${sub.user_id}>`);
+      return i.update({ content: "❌ Отклонено", components: [] });
+    }
   }
 
   // БАЛАНС
@@ -303,7 +328,7 @@ client.on("interactionCreate", async i => {
   }
 });
 
-// ================== ОТЧЁТЫ ==================
+// ================== СООБЩЕНИЯ (ЗАЯВКИ) ==================
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
@@ -323,7 +348,7 @@ client.on("messageCreate", async msg => {
   ).run(msg.guild.id, msg.author.id, msg.channel.id, pts, "pending");
 
   await msg.reply({
-    content: `Заявка на **+${pts}** баллов\nМодератор, примите решение`,
+    content: `Заявка на **+${pts} баллов**\nМодератор, примите решение`,
     components: [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("approve").setLabel("Approve").setStyle(ButtonStyle.Success),
@@ -339,9 +364,8 @@ client.on("voiceStateUpdate", (o, n) => {
   const u = n.id;
 
   if (!o.channelId && n.channelId && !n.selfMute && !n.selfDeaf) {
-    db.prepare(
-      "INSERT OR REPLACE INTO voice VALUES (?,?,?,?)"
-    ).run(g, u, now(), 0);
+    db.prepare("INSERT OR REPLACE INTO voice VALUES (?,?,?,?)")
+      .run(g, u, now(), 0);
   }
 
   if (o.channelId && !n.channelId) {
@@ -356,9 +380,8 @@ client.on("voiceStateUpdate", (o, n) => {
 
     if (hours > 0) addPoints(g, u, hours * VOICE_POINTS_PER_HOUR);
 
-    db.prepare(
-      "INSERT OR REPLACE INTO voice VALUES (?,?,?,?)"
-    ).run(g, u, now(), carry);
+    db.prepare("INSERT OR REPLACE INTO voice VALUES (?,?,?,?)")
+      .run(g, u, now(), carry);
   }
 });
 
