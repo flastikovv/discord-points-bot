@@ -9,15 +9,21 @@ const {
   ButtonStyle,
   EmbedBuilder,
 } = require("discord.js");
-const cron = require("node-cron");
 const Database = require("better-sqlite3");
+const cron = require("node-cron");
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
+  ],
+});
+
 const db = new Database("bot.db");
 
-// ================= НАСТРОЙКИ =================
-const VOICE_POINTS_PER_HOUR = 10;
-const HOUR = 3600;
-
-// ================= БАЗА =================
+// ================== DB ==================
 db.exec(`
 CREATE TABLE IF NOT EXISTS points (
   guild_id TEXT,
@@ -48,26 +54,17 @@ CREATE TABLE IF NOT EXISTS voice (
 );
 `);
 
+// ================== HELPERS ==================
 const now = () => Math.floor(Date.now() / 1000);
 
-// ================= КЛИЕНТ =================
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates,
-  ],
-});
-
-// ================= ХЕЛПЕРЫ =================
 const getPoints = (g, u) =>
   db.prepare("SELECT points FROM points WHERE guild_id=? AND user_id=?")
     .get(g, u)?.points || 0;
 
 const addPoints = (g, u, p) => {
+  const cur = getPoints(g, u);
   db.prepare("INSERT OR REPLACE INTO points VALUES (?,?,?)")
-    .run(g, u, getPoints(g, u) + p);
+    .run(g, u, cur + p);
 };
 
 const isMod = m =>
@@ -76,51 +73,104 @@ const isMod = m =>
   );
 
 const formatTime = s =>
-  `${Math.floor(s / 3600)} ч ${Math.floor((s % 3600) / 60)} мин`;
+  `${Math.floor(s / 3600)}ч ${Math.floor((s % 3600) / 60)}м`;
 
-// ================= READY =================
+// ================== READY ==================
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-  const g = client.guilds.cache.get(process.env.GUILD_ID);
-  if (!g) return;
+  const guild = client.guilds.cache.get(process.env.GUILD_ID);
+  if (!guild) return;
 
-  // КНОПКА СОЗДАТЬ ОТЧЁТ
-  const reportChannel = g.channels.cache.find(
-    c => c.name === process.env.REPORT_CHANNEL_NAME
-  );
-  reportChannel?.send({
-    content: "✨ Отправляй **+число** (пример `+25`). Скриншот по желанию.",
-  });
+  // 📸 ОТЧЁТЫ
+  const reportCh = guild.channels.cache.find(c => c.name === process.env.REPORT_CHANNEL_NAME);
+  if (reportCh) {
+    await reportCh.send({
+      content: "📸 Нажми кнопку, чтобы создать **свой личный канал отчётов**",
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("create_report")
+            .setLabel("Создать отчёт")
+            .setStyle(ButtonStyle.Primary)
+        ),
+      ],
+    });
+  }
 
-  // ЛИДЕРБОРД (БЕЗ МАГАЗИНА)
-  const lb = g.channels.cache.find(
-    c => c.name === process.env.LEADERBOARD_CHANNEL_NAME
-  );
-  lb?.send({
-    embeds: [new EmbedBuilder().setTitle("🏆 Лидерборд").setColor(0x2ecc71)],
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("top_points").setLabel("🏆 Топ баллов").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("my_points").setLabel("💰 Мои баллы").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("top_voice").setLabel("🎙 Топ войса").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("my_voice").setLabel("🎧 Мой войс").setStyle(ButtonStyle.Secondary)
-      ),
-    ],
-  });
+  // 🏆 ЛИДЕРБОРД
+  const lb = guild.channels.cache.find(c => c.name === process.env.LEADERBOARD_CHANNEL_NAME);
+  if (lb) {
+    await lb.send({
+      embeds: [new EmbedBuilder().setTitle("🏆 Лидерборд").setColor(0x2ecc71)],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("top_points").setLabel("🏆 Топ баллов").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("my_points").setLabel("💰 Мои баллы").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("top_voice").setLabel("🎙 Топ войса").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("my_voice").setLabel("🎧 Мой войс").setStyle(ButtonStyle.Secondary),
+        ),
+      ],
+    });
+  }
 
+  // 🛒 МАГАЗИН
+  const shop = guild.channels.cache.find(c => c.name === process.env.SHOP_CHANNEL_NAME);
+  if (shop) {
+    await shop.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🛒 Магазин")
+          .setDescription("Выбери награду и потрать баллы")
+          .addFields(
+            { name: "💰 50.000$", value: "100 баллов", inline: true },
+            { name: "💰 100.000$", value: "180 баллов", inline: true },
+            { name: "🚗 Машина", value: "900 баллов", inline: true },
+          )
+          .setColor(0xf1c40f),
+      ],
+    });
+  }
+
+  // 🔄 СБРОС РАЗ В МЕСЯЦ
   cron.schedule("0 0 1 * *", () => {
     db.prepare("DELETE FROM points").run();
     db.prepare("DELETE FROM voice").run();
   });
 });
 
-// ================= INTERACTIONS =================
+// ================== INTERACTIONS ==================
 client.on("interactionCreate", async i => {
   if (!i.isButton()) return;
   const g = i.guild.id;
   const u = i.user.id;
 
-  if (i.customId === "approve" || i.customId === "reject") {
+  // ➕ СОЗДАТЬ ОТЧЁТ
+  if (i.customId === "create_report") {
+    const exists = db.prepare(
+      "SELECT * FROM reports WHERE guild_id=? AND user_id=?"
+    ).get(g, u);
+
+    if (exists)
+      return i.reply({ content: "❌ У тебя уже есть канал отчёта", ephemeral: true });
+
+    const ch = await i.guild.channels.create({
+      name: `отчёт-${i.user.username}`,
+      type: ChannelType.GuildText,
+      permissionOverwrites: [
+        { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: u, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+      ],
+    });
+
+    db.prepare("INSERT INTO reports VALUES (?,?,?)")
+      .run(g, u, ch.id);
+
+    await ch.send("✨ Отправляй **+число** (пример `+25`). Скриншот по желанию.");
+    return i.reply({ content: `✅ Канал создан: ${ch}`, ephemeral: true });
+  }
+
+  // ✅ / ❌ МОДЕРАЦИЯ
+  if (["approve", "reject"].includes(i.customId)) {
     if (!isMod(i.member))
       return i.reply({ content: "❌ Нет прав", ephemeral: true });
 
@@ -174,17 +224,16 @@ client.on("interactionCreate", async i => {
   }
 });
 
-// ================= ЗАЯВКИ =================
+// ================== ЗАЯВКИ ==================
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
-  const report = db.prepare(
+  const rep = db.prepare(
     "SELECT * FROM reports WHERE channel_id=?"
   ).get(msg.channel.id);
-  if (!report) return;
+  if (!rep) return;
 
   if (!msg.content.startsWith("+")) return;
-
   const pts = parseInt(msg.content.slice(1));
   if (isNaN(pts)) return;
 
@@ -197,13 +246,13 @@ client.on("messageCreate", async msg => {
     components: [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("approve").setLabel("Approve").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("reject").setLabel("Reject").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("reject").setLabel("Reject").setStyle(ButtonStyle.Danger),
       ),
     ],
   });
 });
 
-// ================= ВОЙС =================
+// ================== ВОЙС ==================
 client.on("voiceStateUpdate", (o, n) => {
   const g = n.guild.id;
   const u = n.id;
@@ -220,7 +269,7 @@ client.on("voiceStateUpdate", (o, n) => {
 
     const spent = now() - r.joined_at;
     const total = r.seconds + spent;
-    addPoints(g, u, Math.floor(total / HOUR) * VOICE_POINTS_PER_HOUR);
+    addPoints(g, u, Math.floor(total / 3600) * 10);
 
     db.prepare(
       "UPDATE voice SET seconds=?,joined_at=NULL WHERE guild_id=? AND user_id=?"
