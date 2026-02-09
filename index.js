@@ -211,6 +211,10 @@ async function registerCommands() {
 
   // Регистрируем глобально (может обновляться до ~1 часа)
   // Если хочешь быстрее (моментально), можно на сервер (guild) — скажешь, сделаю.
+  const guildId = process.env.GUILD_ID;
+if (guildId) {
+  await rest.put(Routes.applicationGuildCommands(appId, guildId), { body: commands });
+} else {
   await rest.put(Routes.applicationCommands(appId), { body: commands });
 }
 
