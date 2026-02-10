@@ -40,43 +40,17 @@ const SHOP_ITEMS = [
 ];
 
 db.exec(`
-CREATE TABLE IF NOT EXISTS points (
-  guild_id TEXT,
-  user_id TEXT,
-  points INTEGER DEFAULT 0,
-  PRIMARY KEY (guild_id,user_id)
-);
-CREATE TABLE IF NOT EXISTS reports (
-  guild_id TEXT,
-  user_id TEXT,
-  channel_id TEXT,
-  PRIMARY KEY (guild_id,user_id)
-);
-CREATE TABLE IF NOT EXISTS submissions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT,
-  user_id TEXT,
-  channel_id TEXT,
-  points INTEGER,
-  status TEXT
-);
-CREATE TABLE IF NOT EXISTS voice (
-  guild_id TEXT,
-  user_id TEXT,
-  seconds INTEGER DEFAULT 0,
-  joined_at INTEGER,
-  hours_awarded INTEGER DEFAULT 0,
-  PRIMARY KEY (guild_id,user_id)
-);
+CREATE TABLE IF NOT EXISTS points (guild_id TEXT,user_id TEXT,points INTEGER,PRIMARY KEY (guild_id,user_id));
+CREATE TABLE IF NOT EXISTS reports (guild_id TEXT,user_id TEXT,channel_id TEXT,PRIMARY KEY (guild_id,user_id));
+CREATE TABLE IF NOT EXISTS voice (guild_id TEXT,user_id TEXT,seconds INTEGER,joined_at INTEGER,hours_awarded INTEGER,PRIMARY KEY (guild_id,user_id));
 `);
 
-const now = () => Math.floor(Date.now() / 1000);
 const getPoints = (g,u)=>db.prepare("SELECT points FROM points WHERE guild_id=? AND user_id=?").get(g,u)?.points||0;
-const addPoints=(g,u,p)=>db.prepare("INSERT OR REPLACE INTO points VALUES (?,?,?)").run(g,u,getPoints(g,u)+p);
-const removePoints=(g,u,p)=>{const c=getPoints(g,u);if(c<p)return false;db.prepare("UPDATE points SET points=? WHERE guild_id=? AND user_id=?").run(c-p,g,u);return true;}
+const addPoints = (g,u,p)=>db.prepare("INSERT OR REPLACE INTO points VALUES (?,?,?)").run(g,u,getPoints(g,u)+p);
+const removePoints = (g,u,p)=>{const c=getPoints(g,u);if(c<p)return false;db.prepare("UPDATE points SET points=? WHERE guild_id=? AND user_id=?").run(c-p,g,u);return true};
 const isMod = m => m.roles.cache.some(r => ["dep","high","Leader"].includes(r.name));
-const formatTime=s=>`${Math.floor(s/3600)}ч ${Math.floor((s%3600)/60)}м`;
-const getCh=(g,n)=>g.channels.cache.find(c=>c.name===n);
+const getCh = (g,n)=>g.channels.cache.find(c=>c.name===n);
+const now = ()=>Math.floor(Date.now()/1000);
 
 client.once("ready", async ()=>{
   const g = client.guilds.cache.get(process.env.GUILD_ID);
@@ -147,7 +121,7 @@ client.on("interactionCreate", async i=>{
       ]
     });
     db.prepare("INSERT INTO reports VALUES (?,?,?)").run(g.id,uid,ch.id);
-    await ch.send("Отправляй `+число` и скриншот при необходимости.");
+    await ch.send("Отправляй `+число`. Скриншот по желанию.");
     return i.reply({content:`Канал создан: ${ch}`,ephemeral:true});
   }
 
@@ -174,18 +148,33 @@ client.on("interactionCreate", async i=>{
     return i.reply({content:"Отмечено.",ephemeral:true});
   }
 
-  if(i.customId==="lb_my") return i.reply({content:`${getPoints(g.id,uid)} баллов`,ephemeral:true});
+  if(i.customId==="approve"){
+    if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
+    const match=i.message.content.match(/\+(\d+)/);
+    const user=i.message.mentions.users.first();
+    if(!match||!user) return i.reply({content:"Ошибка заявки.",ephemeral:true});
+    addPoints(g.id,user.id,parseInt(match[1]));
+    await i.message.delete().catch(()=>{});
+    return i.reply({content:"Начислено.",ephemeral:true});
+  }
+
+  if(i.customId==="reject"){
+    if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
+    await i.message.delete().catch(()=>{});
+    return i.reply({content:"Отклонено.",ephemeral:true});
+  }
+
+  if(i.customId==="lb_my"){
+    return i.reply({content:`У тебя ${getPoints(g.id,uid)} баллов.`,ephemeral:true});
+  }
 });
 
 client.on("messageCreate", async m=>{
   if(m.author.bot||!m.content.startsWith("+")) return;
-  const rep=db.prepare("SELECT * FROM reports WHERE channel_id=?").get(m.channel.id);
+  const rep=db.prepare("SELECT 1 FROM reports WHERE channel_id=?").get(m.channel.id);
   if(!rep) return;
   const pts=parseInt(m.content.slice(1));
   if(!pts) return;
-
-  db.prepare("INSERT INTO submissions (guild_id,user_id,channel_id,points,status) VALUES (?,?,?,?,?)")
-    .run(m.guild.id,m.author.id,m.channel.id,pts,"pending");
 
   await m.reply({
     content:`Заявка на +${pts}`,
