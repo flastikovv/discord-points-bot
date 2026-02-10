@@ -22,7 +22,6 @@ const client = new Client({
 });
 
 const db = new Database("bot.db");
-
 const VOICE_POINTS_PER_HOUR = 10;
 
 const SHOP_ITEMS = [
@@ -43,6 +42,7 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS points (guild_id TEXT,user_id TEXT,points INTEGER,PRIMARY KEY (guild_id,user_id));
 CREATE TABLE IF NOT EXISTS reports (guild_id TEXT,user_id TEXT,channel_id TEXT,PRIMARY KEY (guild_id,user_id));
 CREATE TABLE IF NOT EXISTS voice (guild_id TEXT,user_id TEXT,seconds INTEGER,joined_at INTEGER,hours_awarded INTEGER,PRIMARY KEY (guild_id,user_id));
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT);
 `);
 
 const getPoints = (g,u)=>db.prepare("SELECT points FROM points WHERE guild_id=? AND user_id=?").get(g,u)?.points||0;
@@ -52,11 +52,39 @@ const isMod = m => m.roles.cache.some(r => ["dep","high","Leader"].includes(r.na
 const getCh = (g,n)=>g.channels.cache.find(c=>c.name===n);
 const now = ()=>Math.floor(Date.now()/1000);
 
-const getTopPoints = guildId =>
-  db.prepare("SELECT user_id, points FROM points WHERE guild_id=? ORDER BY points DESC LIMIT 10").all(guildId);
+const getTopPoints = g =>
+  db.prepare("SELECT user_id, points FROM points WHERE guild_id=? ORDER BY points DESC LIMIT 10").all(g);
 
-const getTopVoice = guildId =>
-  db.prepare("SELECT user_id, seconds FROM voice WHERE guild_id=? ORDER BY seconds DESC LIMIT 10").all(guildId);
+async function updateLeaderboard(guild){
+  const ch = getCh(guild, process.env.LEADERBOARD_CHANNEL_NAME);
+  if(!ch) return;
+
+  const top = getTopPoints(guild.id);
+  const desc = top.length
+    ? top.map((u,i)=>`**${i+1}.** <@${u.user_id}> — ${u.points}`).join("\n")
+    : "Пока нет данных.";
+
+  const embed = new EmbedBuilder()
+    .setTitle("🏆 Лидерборд")
+    .setDescription(desc)
+    .setColor(0x2ecc71);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("lb_top").setLabel("🏆 Топ баллов").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("lb_my").setLabel("💰 Мои баллы").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("lb_voice_top").setLabel("🎙 Топ войса").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("lb_voice_my").setLabel("🎧 Мой войс").setStyle(ButtonStyle.Secondary)
+  );
+
+  const saved = db.prepare("SELECT value FROM meta WHERE key='leaderboard_msg'").get();
+  if(saved){
+    const msg = await ch.messages.fetch(saved.value).catch(()=>null);
+    if(msg) return msg.edit({embeds:[embed],components:[row]});
+  }
+
+  const msg = await ch.send({embeds:[embed],components:[row]});
+  db.prepare("INSERT OR REPLACE INTO meta VALUES ('leaderboard_msg',?)").run(msg.id);
+}
 
 client.once("ready", async ()=>{
   const g = client.guilds.cache.get(process.env.GUILD_ID);
@@ -68,19 +96,6 @@ client.once("ready", async ()=>{
       content:"Нажми кнопку для создания личного канала отчёта.",
       components:[new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("create_report").setLabel("Создать отчёт").setStyle(ButtonStyle.Primary)
-      )]
-    });
-  }
-
-  const lbCh = getCh(g, process.env.LEADERBOARD_CHANNEL_NAME);
-  if(lbCh){
-    await lbCh.send({
-      embeds:[new EmbedBuilder().setTitle("🏆 Лидерборд").setColor(0x2ecc71)],
-      components:[new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("lb_top").setLabel("🏆 Топ баллов").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("lb_my").setLabel("💰 Мои баллы").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("lb_voice_top").setLabel("🎙 Топ войса").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("lb_voice_my").setLabel("🎧 Мой войс").setStyle(ButtonStyle.Secondary)
       )]
     });
   }
@@ -102,9 +117,12 @@ client.once("ready", async ()=>{
     });
   }
 
+  await updateLeaderboard(g);
+
   cron.schedule("0 0 1 * *",()=>{
     db.prepare("DELETE FROM points").run();
     db.prepare("DELETE FROM voice").run();
+    updateLeaderboard(g);
   });
 });
 
@@ -127,7 +145,7 @@ client.on("interactionCreate", async i=>{
       ]
     });
     db.prepare("INSERT INTO reports VALUES (?,?,?)").run(g.id,uid,ch.id);
-    await ch.send("Отправляй `+число`. Скриншот по желанию.");
+    await ch.send("Отправляй скриншот с мероприятия и `+число` (пример +25).");
     return i.reply({content:`Канал создан: ${ch}`,ephemeral:true});
   }
 
@@ -145,6 +163,7 @@ client.on("interactionCreate", async i=>{
         )]
       });
     }
+    await updateLeaderboard(g);
     return i.reply({content:"Покупка оформлена.",ephemeral:true});
   }
 
@@ -161,6 +180,7 @@ client.on("interactionCreate", async i=>{
     if(!match||!user) return i.reply({content:"Ошибка заявки.",ephemeral:true});
     addPoints(g.id,user.id,parseInt(match[1]));
     await i.message.delete().catch(()=>{});
+    await updateLeaderboard(g);
     return i.reply({content:"Начислено.",ephemeral:true});
   }
 
@@ -176,16 +196,8 @@ client.on("interactionCreate", async i=>{
 
   if(i.customId==="lb_top"){
     const top=getTopPoints(g.id);
-    if(!top.length) return i.reply({content:"Пока нет данных.",ephemeral:true});
-    const txt=top.map((u,i)=>`**${i+1}.** <@${u.user_id}> — ${u.points}`).join("\n");
+    const txt=top.length?top.map((u,i)=>`**${i+1}.** <@${u.user_id}> — ${u.points}`).join("\n"):"Пока нет данных.";
     return i.reply({embeds:[new EmbedBuilder().setTitle("🏆 Топ баллов").setDescription(txt)],ephemeral:true});
-  }
-
-  if(i.customId==="lb_voice_top"){
-    const top=getTopVoice(g.id);
-    if(!top.length) return i.reply({content:"Пока нет данных.",ephemeral:true});
-    const txt=top.map((u,i)=>`**${i+1}.** <@${u.user_id}> — ${Math.floor(u.seconds/60)} мин`).join("\n");
-    return i.reply({embeds:[new EmbedBuilder().setTitle("🎙 Топ войса").setDescription(txt)],ephemeral:true});
   }
 
   if(i.customId==="lb_voice_my"){
@@ -195,7 +207,7 @@ client.on("interactionCreate", async i=>{
 });
 
 client.on("messageCreate", async m=>{
-  if(m.author.bot||!m.content.startsWith("+")) return;
+  if(m.author.bot||!m.content.startsWith("+")||!m.attachments.size) return;
   const rep=db.prepare("SELECT 1 FROM reports WHERE channel_id=?").get(m.channel.id);
   if(!rep) return;
   const pts=parseInt(m.content.slice(1));
@@ -221,7 +233,10 @@ client.on("voiceStateUpdate",(o,n)=>{
     const spent=ts-(r.joined_at||ts);
     const total=r.seconds+spent;
     const hours=Math.floor(total/3600);
-    if(hours>r.hours_awarded) addPoints(g,u,(hours-r.hours_awarded)*VOICE_POINTS_PER_HOUR);
+    if(hours>r.hours_awarded){
+      addPoints(g,u,(hours-r.hours_awarded)*VOICE_POINTS_PER_HOUR);
+      updateLeaderboard(n.guild);
+    }
     db.prepare("UPDATE voice SET seconds=?,joined_at=NULL,hours_awarded=? WHERE guild_id=? AND user_id=?")
       .run(total,hours,g,u);
   }
