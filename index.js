@@ -72,7 +72,6 @@ async function updateLeaderboard(guild){
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("lb_top").setLabel("🏆 Топ баллов").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("lb_my").setLabel("💰 Мои баллы").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("lb_voice_top").setLabel("🎙 Топ войса").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("lb_voice_my").setLabel("🎧 Мой войс").setStyle(ButtonStyle.Secondary)
   );
 
@@ -100,23 +99,6 @@ client.once("ready", async ()=>{
     });
   }
 
-  const shopCh = getCh(g, process.env.SHOP_CHANNEL_NAME);
-  if(shopCh){
-    await shopCh.send({
-      embeds:[new EmbedBuilder()
-        .setTitle("🛒 Магазин")
-        .setDescription(SHOP_ITEMS.map(i=>`${i.label} — **${i.cost} баллов**`).join("\n"))
-      ],
-      components:SHOP_ITEMS.reduce((rows,i,idx)=>{
-        if(idx%5===0) rows.push(new ActionRowBuilder());
-        rows[rows.length-1].addComponents(
-          new ButtonBuilder().setCustomId(`buy_${i.id}`).setLabel(i.label).setStyle(ButtonStyle.Primary)
-        );
-        return rows;
-      },[])
-    });
-  }
-
   await updateLeaderboard(g);
 
   cron.schedule("0 0 1 * *",()=>{
@@ -130,6 +112,26 @@ client.on("interactionCreate", async i=>{
   if(!i.isButton()) return;
   const g=i.guild, uid=i.user.id;
   const logCh=getCh(g,process.env.MOD_LOG_CHANNEL_NAME);
+
+  if(i.customId==="create_report"){
+    if(db.prepare("SELECT 1 FROM reports WHERE guild_id=? AND user_id=?").get(g.id,uid))
+      return i.reply({content:"Канал уже существует.",ephemeral:true});
+
+    const ch=await g.channels.create({
+      name:`отчёт-${i.user.username}`.toLowerCase(),
+      type:ChannelType.GuildText,
+      permissionOverwrites:[
+        {id:g.id,deny:[PermissionsBitField.Flags.ViewChannel]},
+        {id:uid,allow:[PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.SendMessages]},
+        ...g.roles.cache.filter(r=>["dep","high","Leader"].includes(r.name))
+          .map(r=>({id:r.id,allow:[PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.SendMessages]}))
+      ]
+    });
+
+    db.prepare("INSERT INTO reports VALUES (?,?,?)").run(g.id,uid,ch.id);
+    await ch.send("Отправляй скриншот с мероприятия и `+число` (пример +25).");
+    return i.reply({content:`Канал создан: ${ch}`,ephemeral:true});
+  }
 
   if(i.customId==="approve"){
     if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
@@ -153,17 +155,11 @@ client.on("interactionCreate", async i=>{
     if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
 
     if(logCh){
-      await logCh.send(`❌ **Reject:** ${i.user} отклонил заявку в канале ${i.channel}`);
+      await logCh.send(`❌ **Reject:** ${i.user} отклонил заявку (канал: ${i.channel})`);
     }
 
     await i.message.delete().catch(()=>{});
     return i.reply({content:"Отклонено.",ephemeral:true});
-  }
-
-  if(i.customId==="issued"){
-    if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
-    await i.message.delete().catch(()=>{});
-    return i.reply({content:"Отмечено.",ephemeral:true});
   }
 
   if(i.customId==="lb_my"){
