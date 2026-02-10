@@ -85,6 +85,27 @@ async function updateLeaderboard(guild){
   db.prepare("INSERT OR REPLACE INTO meta VALUES ('leaderboard_msg',?)").run(msg.id);
 }
 
+async function sendShop(guild){
+  const ch = getCh(guild, process.env.SHOP_CHANNEL_NAME);
+  if(!ch) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle("🛒 Магазин")
+    .setDescription("Выбери награду и потрать баллы\n\n" +
+      SHOP_ITEMS.map(i=>`${i.label} — **${i.cost} баллов**`).join("\n"))
+    .setColor(0xf1c40f);
+
+  const rows = [];
+  SHOP_ITEMS.forEach((i,idx)=>{
+    if(idx % 5 === 0) rows.push(new ActionRowBuilder());
+    rows[rows.length-1].addComponents(
+      new ButtonBuilder().setCustomId(`buy_${i.id}`).setLabel(i.label).setStyle(ButtonStyle.Primary)
+    );
+  });
+
+  await ch.send({embeds:[embed],components:rows});
+}
+
 client.once("ready", async ()=>{
   const g = client.guilds.cache.get(process.env.GUILD_ID);
   if(!g) return;
@@ -99,6 +120,7 @@ client.once("ready", async ()=>{
     });
   }
 
+  await sendShop(g);
   await updateLeaderboard(g);
 
   cron.schedule("0 0 1 * *",()=>{
@@ -133,6 +155,19 @@ client.on("interactionCreate", async i=>{
     return i.reply({content:`Канал создан: ${ch}`,ephemeral:true});
   }
 
+  if(i.customId.startsWith("buy_")){
+    const item=SHOP_ITEMS.find(x=>x.id===i.customId.replace("buy_",""));
+    if(!item||!removePoints(g.id,uid,item.cost))
+      return i.reply({content:"Недостаточно баллов.",ephemeral:true});
+
+    if(logCh){
+      await logCh.send(`🛒 Покупка: ${i.user} купил **${item.label}** за ${item.cost} баллов`);
+    }
+
+    await updateLeaderboard(g);
+    return i.reply({content:"Покупка оформлена.",ephemeral:true});
+  }
+
   if(i.customId==="approve"){
     if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
     const match=i.message.content.match(/\+(\d+)/);
@@ -144,7 +179,7 @@ client.on("interactionCreate", async i=>{
     await updateLeaderboard(g);
 
     if(logCh){
-      await logCh.send(`✅ **Approve:** ${i.user} начислил **+${pts}** ${user} (канал: ${i.channel})`);
+      await logCh.send(`✅ Approve: ${i.user} начислил +${pts} ${user} (канал: ${i.channel})`);
     }
 
     await i.message.delete().catch(()=>{});
@@ -155,7 +190,7 @@ client.on("interactionCreate", async i=>{
     if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
 
     if(logCh){
-      await logCh.send(`❌ **Reject:** ${i.user} отклонил заявку (канал: ${i.channel})`);
+      await logCh.send(`❌ Reject: ${i.user} отклонил заявку (канал: ${i.channel})`);
     }
 
     await i.message.delete().catch(()=>{});
