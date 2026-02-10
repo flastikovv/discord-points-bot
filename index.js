@@ -52,6 +52,12 @@ const isMod = m => m.roles.cache.some(r => ["dep","high","Leader"].includes(r.na
 const getCh = (g,n)=>g.channels.cache.find(c=>c.name===n);
 const now = ()=>Math.floor(Date.now()/1000);
 
+const getTopPoints = guildId =>
+  db.prepare("SELECT user_id, points FROM points WHERE guild_id=? ORDER BY points DESC LIMIT 10").all(guildId);
+
+const getTopVoice = guildId =>
+  db.prepare("SELECT user_id, seconds FROM voice WHERE guild_id=? ORDER BY seconds DESC LIMIT 10").all(guildId);
+
 client.once("ready", async ()=>{
   const g = client.guilds.cache.get(process.env.GUILD_ID);
   if(!g) return;
@@ -166,6 +172,25 @@ client.on("interactionCreate", async i=>{
 
   if(i.customId==="lb_my"){
     return i.reply({content:`У тебя ${getPoints(g.id,uid)} баллов.`,ephemeral:true});
+  }
+
+  if(i.customId==="lb_top"){
+    const top=getTopPoints(g.id);
+    if(!top.length) return i.reply({content:"Пока нет данных.",ephemeral:true});
+    const txt=top.map((u,i)=>`**${i+1}.** <@${u.user_id}> — ${u.points}`).join("\n");
+    return i.reply({embeds:[new EmbedBuilder().setTitle("🏆 Топ баллов").setDescription(txt)],ephemeral:true});
+  }
+
+  if(i.customId==="lb_voice_top"){
+    const top=getTopVoice(g.id);
+    if(!top.length) return i.reply({content:"Пока нет данных.",ephemeral:true});
+    const txt=top.map((u,i)=>`**${i+1}.** <@${u.user_id}> — ${Math.floor(u.seconds/60)} мин`).join("\n");
+    return i.reply({embeds:[new EmbedBuilder().setTitle("🎙 Топ войса").setDescription(txt)],ephemeral:true});
+  }
+
+  if(i.customId==="lb_voice_my"){
+    const r=db.prepare("SELECT seconds FROM voice WHERE guild_id=? AND user_id=?").get(g.id,uid);
+    return i.reply({content:`Ты в войсе ${r?Math.floor(r.seconds/60):0} мин.`,ephemeral:true});
   }
 });
 
