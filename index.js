@@ -129,65 +129,41 @@ client.once("ready", async ()=>{
 client.on("interactionCreate", async i=>{
   if(!i.isButton()) return;
   const g=i.guild, uid=i.user.id;
-
-  if(i.customId==="create_report"){
-    if(db.prepare("SELECT 1 FROM reports WHERE guild_id=? AND user_id=?").get(g.id,uid))
-      return i.reply({content:"Канал уже существует.",ephemeral:true});
-
-    const ch=await g.channels.create({
-      name:`отчёт-${i.user.username}`.toLowerCase(),
-      type:ChannelType.GuildText,
-      permissionOverwrites:[
-        {id:g.id,deny:[PermissionsBitField.Flags.ViewChannel]},
-        {id:uid,allow:[PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.SendMessages]},
-        ...g.roles.cache.filter(r=>["dep","high","Leader"].includes(r.name))
-          .map(r=>({id:r.id,allow:[PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.SendMessages]}))
-      ]
-    });
-    db.prepare("INSERT INTO reports VALUES (?,?,?)").run(g.id,uid,ch.id);
-    await ch.send("Отправляй скриншот с мероприятия и `+число` (пример +25).");
-    return i.reply({content:`Канал создан: ${ch}`,ephemeral:true});
-  }
-
-  if(i.customId.startsWith("buy_")){
-    const item=SHOP_ITEMS.find(x=>x.id===i.customId.replace("buy_",""));
-    if(!item||!removePoints(g.id,uid,item.cost))
-      return i.reply({content:"Недостаточно баллов.",ephemeral:true});
-
-    const logCh=getCh(g,process.env.MOD_LOG_CHANNEL_NAME);
-    if(logCh){
-      await logCh.send({
-        content:`🛒 Покупка: <@${uid}> приобрёл ${item.label} за ${item.cost} баллов.`,
-        components:[new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId("issued").setLabel("Выдал").setStyle(ButtonStyle.Success)
-        )]
-      });
-    }
-    await updateLeaderboard(g);
-    return i.reply({content:"Покупка оформлена.",ephemeral:true});
-  }
-
-  if(i.customId==="issued"){
-    if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
-    await i.message.delete().catch(()=>{});
-    return i.reply({content:"Отмечено.",ephemeral:true});
-  }
+  const logCh=getCh(g,process.env.MOD_LOG_CHANNEL_NAME);
 
   if(i.customId==="approve"){
     if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
     const match=i.message.content.match(/\+(\d+)/);
     const user=i.message.mentions.users.first();
     if(!match||!user) return i.reply({content:"Ошибка заявки.",ephemeral:true});
-    addPoints(g.id,user.id,parseInt(match[1]));
-    await i.message.delete().catch(()=>{});
+
+    const pts=parseInt(match[1]);
+    addPoints(g.id,user.id,pts);
     await updateLeaderboard(g);
+
+    if(logCh){
+      await logCh.send(`✅ **Approve:** ${i.user} начислил **+${pts}** ${user} (канал: ${i.channel})`);
+    }
+
+    await i.message.delete().catch(()=>{});
     return i.reply({content:"Начислено.",ephemeral:true});
   }
 
   if(i.customId==="reject"){
     if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
+
+    if(logCh){
+      await logCh.send(`❌ **Reject:** ${i.user} отклонил заявку в канале ${i.channel}`);
+    }
+
     await i.message.delete().catch(()=>{});
     return i.reply({content:"Отклонено.",ephemeral:true});
+  }
+
+  if(i.customId==="issued"){
+    if(!isMod(i.member)) return i.reply({content:"Нет прав.",ephemeral:true});
+    await i.message.delete().catch(()=>{});
+    return i.reply({content:"Отмечено.",ephemeral:true});
   }
 
   if(i.customId==="lb_my"){
