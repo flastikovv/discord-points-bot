@@ -91,15 +91,20 @@ async function sendShop(guild){
 
   const embed = new EmbedBuilder()
     .setTitle("🛒 Магазин")
-    .setDescription("Выбери награду и потрать баллы\n\n" +
-      SHOP_ITEMS.map(i=>`${i.label} — **${i.cost} баллов**`).join("\n"))
+    .setDescription(
+      "Выбери награду и потрать баллы\n\n" +
+      SHOP_ITEMS.map(i=>`${i.label} — **${i.cost} баллов**`).join("\n")
+    )
     .setColor(0xf1c40f);
 
   const rows = [];
   SHOP_ITEMS.forEach((i,idx)=>{
     if(idx % 5 === 0) rows.push(new ActionRowBuilder());
     rows[rows.length-1].addComponents(
-      new ButtonBuilder().setCustomId(`buy_${i.id}`).setLabel(i.label).setStyle(ButtonStyle.Primary)
+      new ButtonBuilder()
+        .setCustomId(`buy_${i.id}`)
+        .setLabel(i.label)
+        .setStyle(ButtonStyle.Primary)
     );
   });
 
@@ -115,7 +120,10 @@ client.once("ready", async ()=>{
     await reportCh.send({
       content:"Нажми кнопку для создания личного канала отчёта.",
       components:[new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("create_report").setLabel("Создать отчёт").setStyle(ButtonStyle.Primary)
+        new ButtonBuilder()
+          .setCustomId("create_report")
+          .setLabel("Создать отчёт")
+          .setStyle(ButtonStyle.Primary)
       )]
     });
   }
@@ -151,21 +159,45 @@ client.on("interactionCreate", async i=>{
     });
 
     db.prepare("INSERT INTO reports VALUES (?,?,?)").run(g.id,uid,ch.id);
-    await ch.send("Отправляй скриншот с мероприятия и `+число` (пример +25).");
+    await ch.send("Отправляй **скриншот** с мероприятия и `+число` (пример +25).");
     return i.reply({content:`Канал создан: ${ch}`,ephemeral:true});
   }
 
   if(i.customId.startsWith("buy_")){
-    const item=SHOP_ITEMS.find(x=>x.id===i.customId.replace("buy_",""));
-    if(!item||!removePoints(g.id,uid,item.cost))
-      return i.reply({content:"Недостаточно баллов.",ephemeral:true});
+    const item = SHOP_ITEMS.find(x => x.id === i.customId.replace("buy_",""));
+    if(!item || !removePoints(g.id, uid, item.cost))
+      return i.reply({ content: "Недостаточно баллов.", ephemeral: true });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("shop_given")
+        .setLabel("Выдал")
+        .setStyle(ButtonStyle.Success)
+    );
+
+    const msg = await i.channel.send({
+      content: `🛒 Покупка: ${i.user} купил **${item.label}** за ${item.cost} баллов`,
+      components: [row]
+    });
 
     if(logCh){
-      await logCh.send(`🛒 Покупка: ${i.user} купил **${item.label}** за ${item.cost} баллов`);
+      await logCh.send(`🛒 Покупка: ${i.user} — ${item.label} (${item.cost} баллов)`);
     }
 
     await updateLeaderboard(g);
-    return i.reply({content:"Покупка оформлена.",ephemeral:true});
+    return i.reply({ content: "Покупка оформлена.", ephemeral: true });
+  }
+
+  if(i.customId==="shop_given"){
+    if(!isMod(i.member))
+      return i.reply({ content: "Нет прав.", ephemeral: true });
+
+    if(logCh){
+      await logCh.send(`✅ Выдано: ${i.user} подтвердил выдачу (${i.message.content})`);
+    }
+
+    await i.message.delete().catch(()=>{});
+    return i.reply({ content: "Выдача подтверждена.", ephemeral: true });
   }
 
   if(i.customId==="approve"){
