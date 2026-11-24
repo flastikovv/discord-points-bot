@@ -1,4 +1,4 @@
-/* VideoHub — интерфейс */
+/* Студия Монетизации — интерфейс */
 'use strict';
 
 // ---------- Иконки ----------
@@ -9,6 +9,8 @@ const I = {
   brain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg>',
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  money: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/></svg>',
+  tg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 4.5 2.8 11.7c-.9.4-.9 1.6 0 1.9l4.7 1.5 1.8 5.6c.2.7 1.1.9 1.6.4l2.6-2.5 4.9 3.6c.6.4 1.4.1 1.6-.6L22.9 5.8c.2-.9-.6-1.6-1.4-1.3z"/><path d="m7.5 15.1 9.8-6.6"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>',
@@ -90,15 +92,18 @@ const ui = {
   analysisOpts: { days: 30, accountIds: [], question: '', weakCount: 5 },
   progress: {},
   refreshing: false,
+  statsView: 'videos',
+  tg: { status: 'off', botName: '', error: '' },
 };
 const acc = (id) => S.accounts.find((a) => a.id === id);
 
 const PAGES = [
   { id: 'videos', title: 'Видео', sub: 'Добавь ролики, впиши название и описание, выбери, куда выложить', icon: I.video },
   { id: 'published', title: 'Выложенные', sub: 'Что загружается, что запланировано и что уже вышло', icon: I.send },
-  { id: 'stats', title: 'Статистика', sub: 'Цифры по каждому видео: просмотры, досмотр, где уходят зрители', icon: I.chart },
+  { id: 'stats', title: 'Статистика', sub: 'Цифры по каждому видео, лучшее время публикации, сравнение RU и EN', icon: I.chart },
   { id: 'analysis', title: 'Анализ', sub: 'ИИ разбирает статистику и подсказывает, как улучшить видео', icon: I.brain },
-  { id: 'calendar', title: 'Календарь', sub: 'Расписание публикаций по дням', icon: I.cal },
+  { id: 'money', title: 'Монетизация', sub: 'Сколько осталось до партнёрки YouTube и монетизации TikTok', icon: I.money },
+  { id: 'telegram', title: 'Telegram', sub: 'Уведомления и управление с телефона через своего бота', icon: I.tg },
 ];
 const PAGES2 = [{ id: 'settings', title: 'Аккаунты и настройки', sub: 'Каналы, TikTok-аккаунты, ключи доступа и инструкции', icon: I.gear }];
 
@@ -107,7 +112,8 @@ function renderNav() {
     videos: S.videos.filter((v) => v.status === 'draft').length,
     published: S.videos.filter((v) => ['uploading', 'error'].includes(v.status)).length,
   };
-  const btn = (p) => `<button class="${ui.page === p.id ? 'active' : ''}" data-page="${p.id}">${p.icon}<span>${p.title === 'Аккаунты и настройки' ? 'Настройки' : p.title}</span>${counts[p.id] ? `<span class="badge count">${counts[p.id]}</span>` : ''}</button>`;
+  const tgDot = ui.tg.status === 'on' && S.settings.telegram?.chatId ? '<span class="dot on" title="бот работает"></span>' : S.settings.hasTelegramToken ? '<span class="dot err" title="бот не привязан или ошибка"></span>' : '';
+  const btn = (p) => `<button class="${ui.page === p.id ? 'active' : ''}" data-page="${p.id}">${p.icon}<span>${p.title === 'Аккаунты и настройки' ? 'Настройки' : p.title}</span>${counts[p.id] ? `<span class="badge count">${counts[p.id]}</span>` : ''}${p.id === 'telegram' ? tgDot : ''}</button>`;
   $('#nav').innerHTML = PAGES.map(btn).join('');
   $('#nav2').innerHTML = PAGES2.map(btn).join('');
   const yt = S.accounts.filter((a) => a.platform === 'youtube').length;
@@ -117,12 +123,13 @@ function renderNav() {
 
 function render() {
   renderNav();
+  if (ui.page === 'calendar') ui.page = 'videos';
   const p = [...PAGES, ...PAGES2].find((x) => x.id === ui.page) || PAGES[0];
   $('#pageTitle').textContent = p.title;
   $('#pageSub').textContent = p.sub;
   const c = $('#content');
   const scroll = c.scrollTop;
-  const fn = { videos: pageVideos, published: pagePublished, stats: pageStats, analysis: pageAnalysis, calendar: pageCalendar, settings: pageSettings }[p.id];
+  const fn = { videos: pageVideos, published: pagePublished, stats: pageStats, analysis: pageAnalysis, money: pageMoney, telegram: pageTelegram, settings: pageSettings }[p.id];
   const { html, actions = '' } = fn();
   $('#pageActions').innerHTML = actions;
   c.innerHTML = html;
@@ -265,7 +272,7 @@ function openEditor(id, preset = {}) {
             ${v.tiktok.mode === 'draft' ? '<div class="hint">Видео придёт во «Входящие» в приложении TikTok — останется добавить звук/подпись и опубликовать с телефона.</div>'
               : `${!S.settings.tiktokAudited ? '<div class="note-box" style="margin:8px 0 0">Пока TikTok не одобрил твоё приложение, видео публикуются как <b>приватные</b> («Только я»). После одобрения отметь это в настройках.</div>' : ''}
               <label class="check"><input type="checkbox" id="ttNoComm" ${v.tiktok.disableComment ? 'checked' : ''}>Отключить комментарии</label>`}
-            <div class="hint">Публикация в TikTok «на время» сработает, только если VideoHub в этот момент запущен (можно свернуть в трей).</div>
+            <div class="hint">Публикация в TikTok «на время» сработает, только если Студия Монетизации в этот момент запущен (можно свернуть в трей).</div>
           </div>` : ''}
         </div>
       </div></div>
@@ -332,6 +339,12 @@ function openEditor(id, preset = {}) {
     const autoPick = () => {
       const m = S.accounts.filter((a) => (!v.lang || !a.lang || a.lang === v.lang) && (!v.kind || !a.group || a.group === v.kind) && (a.lang || a.group));
       if (m.length) v.accountIds = m.map((a) => a.id);
+      // шаблон аккаунта по умолчанию — если описание ещё пустое
+      const t = S.templates.find((x) => x.id === m.find((a) => a.templateId)?.templateId);
+      if (t && !v.description && !(v.tags || []).length) {
+        v.description = t.description || '';
+        v.tags = (t.tags || '').split(/[\s,]+/).map((x) => x.replace(/^#/, '')).filter(Boolean);
+      }
     };
     root.querySelectorAll('[data-kind]').forEach((b) => { b.onclick = () => { collect(); v.kind = b.dataset.kind; autoPick(); draw(); }; });
     root.querySelectorAll('[data-lang]').forEach((b) => { b.onclick = () => { collect(); v.lang = b.dataset.lang; autoPick(); draw(); }; });
@@ -379,7 +392,8 @@ function scheduleDialog(id) {
       <div style="margin-bottom:12px"><b>${esc(v.title || 'Без названия')}</b></div>
       <label class="field"><span>Дата и время публикации</span><input type="datetime-local" class="input" id="when2" value="${toLocalInput(v.plannedAt || Date.now() + 3600e3)}"></label>
       <div class="row wrap" style="gap:6px;margin-bottom:12px">${[['Через час', 1], ['Через 3 ч', 3], ['Завтра 12:00', 'tm12'], ['Завтра 18:00', 'tm18']].map(([t, k]) => `<button class="btn sm" data-q="${k}">${t}</button>`).join('')}</div>
-      <div class="hint">YouTube опубликует сам — компьютер можно выключить. TikTok выложится, если VideoHub будет запущен (хватит свернуть в трей).</div>
+      ${bestSlotsHint()}
+      <div class="hint">YouTube опубликует сам — компьютер можно выключить. TikTok выложится, если Студия Монетизации будет запущен (хватит свернуть в трей).</div>
     </div>
     <footer><span class="grow"></span><button class="btn" data-close>Отмена</button><button class="btn violet" data-ok>${I.clock}Запланировать</button></footer>
   </div></div>`;
@@ -518,10 +532,13 @@ function statsDetail(a, v) {
 function pageStats() {
   if (!S.accounts.length) return { html: `<div class="empty">${I.chart}<h3>Нет аккаунтов</h3><div>Добавь каналы в «Настройках», и здесь появится статистика.</div></div>` };
   if (!ui.statsAcc || !acc(ui.statsAcc)) ui.statsAcc = S.accounts[0].id;
+  const viewSeg = `<div class="seg">${[['videos', 'По видео'], ['time', 'Лучшее время'], ['pairs', 'RU ↔ EN']].map(([k, t]) => `<button data-sview="${k}" class="${ui.statsView === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  if (ui.statsView === 'time') return { actions: viewSeg, html: statsBestTime() };
+  if (ui.statsView === 'pairs') return { actions: viewSeg, html: statsPairs() };
   const a = acc(ui.statsAcc);
   const st = S.stats[a.id];
   const tabs = `<div class="acc-tabs">${S.accounts.map((x) => `<span class="chip click ${x.id === a.id ? 'sel' : ''}" data-sacc="${x.id}">${pf(x.platform)}${esc(x.name)} ${langBadge(x.lang)}</span>`).join('')}</div>`;
-  const actions = `<span class="small muted">${st ? 'Обновлено ' + ago(st.fetchedAt) : ''}</span>
+  const actions = `${viewSeg}<span class="small muted">${st ? 'Обновлено ' + ago(st.fetchedAt) : ''}</span>
     <div class="seg">${[7, 30, 90, 365].map((d) => `<button data-speriod="${d}" class="${ui.statsPeriod === d ? 'on' : ''}">${d === 365 ? 'Год' : d + ' дн'}</button>`).join('')}</div>
     <button class="btn primary" data-srefresh ${ui.refreshing ? 'disabled' : ''}>${ui.refreshing ? '<span class="spinner"></span>Обновляю…' : I.refresh + 'Обновить всё'}</button>`;
   if (!st) return { actions, html: `${tabs}<div class="empty">${I.chart}<h3>Статистика ещё не загружена</h3><button class="btn primary" data-srefresh>${I.refresh}Загрузить</button></div>` };
@@ -599,27 +616,6 @@ function pageAnalysis() {
   return { html };
 }
 
-// ---------- Страница «Календарь» ----------
-function pageCalendar() {
-  const items = [];
-  for (const v of S.videos) {
-    if (v.scheduleAt && v.status !== 'draft') items.push({ t: v.scheduleAt, v, kind: 'sched' });
-    else if (v.status === 'draft' && v.plannedAt) items.push({ t: v.plannedAt, v, kind: 'plan' });
-  }
-  const future = items.filter((x) => new Date(x.t).getTime() > Date.now() - 864e5).sort((a, b) => new Date(a.t) - new Date(b.t));
-  if (!future.length) return { html: `<div class="empty">${I.cal}<h3>Расписание пустое</h3><div>Запланируй видео — и оно появится здесь по дням.</div></div>` };
-  const byDay = {};
-  for (const x of future) (byDay[new Date(x.t).toDateString()] ||= []).push(x);
-  const html = Object.entries(byDay).map(([d, list]) => `<div class="cal-day"><div class="d">${dday(d)}</div>
-    ${list.map((x) => `<div class="trow" style="margin-bottom:6px;cursor:pointer" ${x.kind === 'plan' ? `data-edit="${x.v.id}"` : ''}>
-      <b style="min-width:52px">${new Date(x.t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</b>
-      <span class="grow">${esc(x.v.title || 'Без названия')}</span>${langBadge(x.v.lang)}
-      ${(x.v.accountIds || []).map((id) => acc(id)).filter(Boolean).map((a) => pf(a.platform)).join('')}
-      ${x.kind === 'plan' ? '<span class="status draft">Черновик (не запланирован)</span>' : status(x.v.status)}
-    </div>`).join('')}</div>`).join('');
-  return { html: `<div class="card">${html}</div>` };
-}
-
 // ---------- Страница «Настройки» ----------
 function pageSettings() {
   const s = S.settings;
@@ -629,11 +625,12 @@ function pageSettings() {
       <div class="small muted">${fmt(a.followers)} подписчиков</div></div>
     <select class="input" data-alang="${a.id}" title="Язык">${[['', 'Язык —'], ['ru', 'RU'], ['en', 'EN']].map(([k, t]) => `<option value="${k}" ${(a.lang || '') === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <select class="input" data-agroup="${a.id}" title="Тип контента">${[['', 'Тип —'], ['stories', 'Истории'], ['clips', 'Нарезки']].map(([k, t]) => `<option value="${k}" ${(a.group || '') === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <select class="input" data-atpl="${a.id}" title="Шаблон описания по умолчанию"><option value="">Шаблон —</option>${S.templates.map((t) => `<option value="${t.id}" ${a.templateId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <button class="btn sm" data-relogin="${a.platform}">${I.refresh}Войти заново</button>
     <button class="icon-btn" data-arm="${a.id}" title="Удалить">${I.trash}</button>
   </div>`;
   const secret = (k, has, ph) => `<div class="keyline"><input class="input" type="password" id="${k}" placeholder="${has ? '•••••••• сохранено (впиши новый, чтобы заменить)' : ph}">${has ? `<span class="ok-dot">✓ сохранён</span>` : ''}</div>`;
-  const html = `<div class="grid two" style="align-items:start">
+  const html = `<div class="grid two" style="align-items:start;grid-template-columns:minmax(0,3fr) minmax(0,2fr)">
     <div>
       <div class="card" style="margin-bottom:16px">
         <h3>Аккаунты <small>— задай язык и тип, тогда при добавлении видео нужные отметятся сами</small></h3>
@@ -664,6 +661,7 @@ function pageSettings() {
       <div class="card">
         <h3>Программа</h3>
         <label class="check"><input type="checkbox" id="autostart" ${s.autostart ? 'checked' : ''}>Запускать вместе с Windows (свёрнутой в трей)</label>
+        <label class="check"><input type="checkbox" id="desktopNotify" ${s.desktopNotify ? 'checked' : ''}>Дублировать уведомления на рабочий стол Windows (основные — в Telegram)</label>
         <label class="check"><input type="checkbox" id="keepInTray" ${s.keepInTray ? 'checked' : ''}>При закрытии окна сворачивать в трей (нужно для расписания TikTok)</label>
         <label class="field" style="margin-top:8px"><span>Автообновление статистики</span>
           <select class="input" id="statsAutoRefreshHours">${[[0, 'Выключено'], [3, 'Каждые 3 часа'], [6, 'Каждые 6 часов'], [12, 'Каждые 12 часов'], [24, 'Раз в сутки']].map(([k, t]) => `<option value="${k}" ${+s.statsAutoRefreshHours === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
@@ -671,14 +669,14 @@ function pageSettings() {
     </div>
     <div>
       <div class="card" style="margin-bottom:16px">
-        <h3>Шаблоны описаний и хэштегов</h3>
+        <h3>Шаблоны описаний и хэштегов <small>— назначь шаблон аккаунту слева, и он подставится сам</small></h3>
         ${S.templates.map((t) => `<div class="trow" style="margin-bottom:6px"><b class="grow">${esc(t.name)}</b><button class="icon-btn" data-tedit="${t.id}">${I.edit}</button><button class="icon-btn" data-tdel="${t.id}">${I.trash}</button></div>`).join('') || '<div class="muted small">Например: «RU истории» — с призывом подписаться и постоянными хэштегами.</div>'}
         <button class="btn sm" style="margin-top:10px" data-tnew>${I.plus}Новый шаблон</button>
       </div>
       <div class="card">
         <h3>Инструкции по подключению</h3>
         <details class="guide"><summary>1. YouTube — получить Client ID и Secret (≈10 минут, один раз)</summary><ol>
-          <li>Открой <a href="#" data-open="https://console.cloud.google.com/projectcreate">console.cloud.google.com</a> и создай проект (например, «VideoHub»).</li>
+          <li>Открой <a href="#" data-open="https://console.cloud.google.com/projectcreate">console.cloud.google.com</a> и создай проект (например, «Студия Монетизации»).</li>
           <li>Меню → «APIs &amp; Services» → «Library». Найди и включи <b>YouTube Data API v3</b> и <b>YouTube Analytics API</b>.</li>
           <li>«OAuth consent screen» (или «Google Auth Platform»): тип <b>External</b>, впиши название и свою почту.</li>
           <li>В разделе «Audience» нажми <b>Publish app</b> («В рабочем режиме»). Иначе Google будет выкидывать из аккаунта каждые 7 дней. Проверку проходить не нужно — при входе просто нажми «Дополнительно → Перейти».</li>
@@ -701,7 +699,7 @@ function pageSettings() {
         </ol></details>
         <details class="guide"><summary>Как работает расписание</summary><ol>
           <li><b>YouTube</b>: при нажатии «Запланировать» видео сразу загружается скрытым с датой публикации. Дальше YouTube сам его откроет — компьютер можно выключить.</li>
-          <li><b>TikTok</b>: TikTok не умеет публиковать по времени через API, поэтому VideoHub выкладывает видео сам в нужный момент. Программа должна быть запущена (свёрнута в трей). Если компьютер был выключен, видео выйдет сразу после включения.</li>
+          <li><b>TikTok</b>: TikTok не умеет публиковать по времени через API, поэтому программа выкладывает видео сам в нужный момент. Программа должна быть запущена (свёрнута в трей). Если компьютер был выключен, видео выйдет сразу после включения.</li>
         </ol></details>
       </div>
     </div>
@@ -731,9 +729,220 @@ function templateDialog(id) {
   };
 }
 
+
+// ---------- Лучшее время публикации ----------
+const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const SLOTS = [[0, 6, 'Ночь 0–6'], [6, 10, '6–10'], [10, 13, '10–13'], [13, 16, '13–16'], [16, 19, '16–19'], [19, 22, '19–22'], [22, 24, '22–24']];
+const median = (arr) => { const x = [...arr].sort((a, b) => a - b); return x.length ? x[Math.floor(x.length / 2)] : 0; };
+
+function bestTimeData(accountIds) {
+  // Просмотры каждого видео делим на медиану его аккаунта, чтобы сравнивать каналы разного размера
+  const cells = {};
+  for (const a of S.accounts) {
+    if (accountIds && accountIds.length && !accountIds.includes(a.id)) continue;
+    const vids = (S.stats[a.id]?.videos || []).filter((v) => {
+      const age = Date.now() - new Date(v.publishedAt).getTime();
+      return age > 2 * 864e5 && age < 120 * 864e5;
+    });
+    const m = median(vids.map((v) => v.views)) || 1;
+    for (const v of vids) {
+      const d = new Date(v.publishedAt);
+      const day = (d.getDay() + 6) % 7;
+      const slot = SLOTS.findIndex(([f, t]) => d.getHours() >= f && d.getHours() < t);
+      (cells[day + ':' + slot] ||= []).push(v.views / m);
+    }
+  }
+  const out = {};
+  for (const [k, arr] of Object.entries(cells)) out[k] = { score: median(arr), count: arr.length };
+  return out;
+}
+
+function topSlots(data, k = 3) {
+  return Object.entries(data).filter(([, c]) => c.count >= 2).sort((a, b) => b[1].score - a[1].score).slice(0, k)
+    .map(([key, c]) => { const [d, sl] = key.split(':').map(Number); return { day: d, slot: sl, ...c }; });
+}
+
+function bestSlotsHint() {
+  const best = topSlots(bestTimeData());
+  if (!best.length) return '';
+  return `<div class="info-box">⏰ Лучше всего у тебя заходят видео, выложенные: ${best.map((b) => `<b>${DAYS[b.day]} ${SLOTS[b.slot][2]}</b>`).join(', ')}</div>`;
+}
+
+function statsBestTime() {
+  const data = bestTimeData();
+  const vals = Object.values(data);
+  if (!vals.length) return `<div class="empty">${I.clock}<h3>Пока мало данных</h3><div>Нужны видео старше 2 дней. Обнови статистику во вкладке «По видео».</div></div>`;
+  const max = Math.max(...vals.map((c) => c.score), 1);
+  const best = topSlots(data);
+  const cell = (d, sl) => {
+    const c = data[d + ':' + sl];
+    if (!c) return '<td class="hm empty-c"></td>';
+    const a = Math.min(1, c.score / max);
+    const color = c.score >= 1 ? `rgba(61,220,151,${0.15 + a * 0.75})` : `rgba(155,107,255,${0.12 + a * 0.5})`;
+    return `<td class="hm" style="background:${color}" title="${c.count} видео, ×${c.score.toFixed(2)} от обычного"><b>×${c.score.toFixed(1)}</b><span>${c.count}</span></td>`;
+  };
+  return `<div class="grid" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start">
+    <div class="card">
+      <h3>Когда выкладывать <small>— во сколько раз видео набирают больше/меньше твоего обычного (последние 4 месяца, все аккаунты)</small></h3>
+      <table class="heat"><thead><tr><th></th>${DAYS.map((d) => `<th>${d}</th>`).join('')}</tr></thead>
+      <tbody>${SLOTS.map((sl, si) => `<tr><th>${sl[2]}</th>${DAYS.map((_, di) => cell(di, si)).join('')}</tr>`).join('')}</tbody></table>
+      <div class="legend" style="margin-top:12px"><span><i style="background:#3ddc97"></i>лучше обычного</span><span><i style="background:#9b6bff"></i>хуже обычного</span><span>маленькая цифра — сколько видео</span></div>
+    </div>
+    <div class="card">
+      <h3>Лучшие окна</h3>
+      ${best.length ? best.map((b, i) => `<div class="weak"><b style="font-size:18px">${['🥇', '🥈', '🥉'][i]}</b><span class="grow"><b>${DAYS[b.day]}, ${SLOTS[b.slot][2]}</b><div class="small muted">${b.count} видео</div></span><b class="up">×${b.score.toFixed(1)}</b></div>`).join('') : '<div class="muted small">Нужно хотя бы по 2 видео в одном окне.</div>'}
+      <div class="hint">Время — по часам твоего компьютера. Чем больше видео, тем точнее подсказка. Окно с 1 видео — случайность, поэтому в лучшие попадают окна от 2 видео.</div>
+    </div>
+  </div>`;
+}
+
+// ---------- Сравнение RU и EN ----------
+function statsPairs() {
+  const groups = {};
+  for (const v of S.videos) if (v.pairId) (groups[v.pairId] ||= []).push(v);
+  const pairs = Object.values(groups).filter((g) => g.length > 1);
+  if (!pairs.length) return `<div class="empty">${I.copy}<h3>Пар пока нет</h3><div>Когда добавляешь видео, нажми «копия» на карточке (или выбери «Пара» в редакторе) — так программа свяжет RU и EN версии одной истории и сравнит их здесь.</div></div>`;
+  const statOf = (v) => {
+    let views = 0; let likes = 0; let pctSum = 0; let pctN = 0; const where = [];
+    for (const r of v.results || []) {
+      const sv = S.stats[r.accountId]?.videos?.find((x) => x.id === r.remoteId);
+      if (!sv) continue;
+      views += sv.views; likes += sv.likes;
+      if (sv.avgViewPct != null) { pctSum += sv.avgViewPct; pctN++; }
+      where.push(acc(r.accountId)?.platform);
+    }
+    return { views, likes, pct: pctN ? pctSum / pctN : null, where };
+  };
+  const rows = pairs.map((g) => {
+    const cells = g.map((v) => ({ v, st: statOf(v) }));
+    const maxV = Math.max(...cells.map((c) => c.st.views), 1);
+    return `<div class="card" style="margin-bottom:12px"><div class="grid" style="grid-template-columns:repeat(${cells.length},1fr)">
+      ${cells.map((c) => `<div>
+        <div class="row" style="gap:8px">${langBadge(c.v.lang)}<b class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.v.title || 'Без названия')}</b>${c.st.views === maxV && c.st.views > 0 ? '<span class="badge en">лидер</span>' : ''}</div>
+        <div class="row" style="margin-top:10px;gap:18px">
+          <div><div class="small muted">Просмотры</div><div style="font-size:22px;font-weight:700">${c.v.status === 'draft' ? '—' : fmt(c.st.views)}</div></div>
+          <div><div class="small muted">Лайки</div><div style="font-size:18px;font-weight:600">${fmt(c.st.likes)}</div></div>
+          <div><div class="small muted">Досмотр</div><div style="font-size:18px;font-weight:600">${pct(c.st.pct)}</div></div>
+        </div>
+        <div class="bar" style="margin-top:10px"><i style="width:${(c.st.views / maxV) * 100}%"></i></div>
+      </div>`).join('')}
+    </div></div>`;
+  });
+  return `<div class="hint" style="margin:0 0 12px">Просмотры суммируются по всем платформам, куда выложена версия. Данные обновляются вместе со статистикой.</div>${rows.join('')}`;
+}
+
+// ---------- Страница «Монетизация» ----------
+function progressRow(label, value, max, fmtFn = fmt, note = '') {
+  const p = Math.min(100, Math.round(((value || 0) / max) * 100));
+  return `<div class="prog"><div class="row"><span class="grow">${label}</span><b>${value == null ? '—' : fmtFn(value)}</b><span class="muted small">/ ${fmtFn(max)}</span><span class="badge ${p >= 100 ? 'en' : ''}">${p}%</span></div>
+    <div class="bar big"><i style="width:${p}%"></i></div>${note ? `<div class="small muted" style="margin-top:4px">${note}</div>` : ''}</div>`;
+}
+
+function pageMoney() {
+  if (!S.accounts.length) return { html: `<div class="empty">${I.money}<h3>Нет аккаунтов</h3><div>Добавь каналы в «Настройках».</div></div>` };
+  const cards = S.accounts.map((a) => {
+    const st = S.stats[a.id];
+    const head = `<div class="row" style="margin-bottom:14px">${a.avatar ? `<img src="${esc(a.avatar)}" style="width:34px;height:34px;border-radius:50%">` : pf(a.platform)}<div class="grow"><b>${esc(a.name)}</b> ${langBadge(a.lang)}<div class="small muted">${a.platform === 'youtube' ? 'Партнёрская программа YouTube' : 'TikTok Creator Rewards'}</div></div>${pf(a.platform)}</div>`;
+    if (!st) return `<div class="card">${head}<div class="muted small">Обнови статистику, чтобы увидеть прогресс.</div></div>`;
+    if (a.platform === 'youtube') {
+      const m = st.monetization || {};
+      const perDay = (m.shortsViews90 || 0) / 90;
+      const left = Math.max(0, 1e7 - (m.shortsViews90 || 0));
+      const eta = perDay > 0 && left > 0 ? Math.ceil(left / perDay) : null;
+      const full = st.followers >= 1000 && ((m.shortsViews90 || 0) >= 1e7 || (m.watchHours365 || 0) >= 4000);
+      const lvl1 = st.followers >= 500 && ((m.shortsViews90 || 0) >= 3e6 || (m.watchHours365 || 0) >= 3000);
+      return `<div class="card">${head}
+        ${full ? '<div class="info-box" style="background:var(--green-soft);border-color:rgba(61,220,151,.4)">🎉 Условия выполнены — можно подавать заявку в YouTube Studio → «Монетизация».</div>' : ''}
+        <div class="section-title" style="margin-top:0">Полная монетизация (доход с рекламы)</div>
+        ${progressRow('Подписчики', st.followers, 1000)}
+        ${progressRow('Просмотры Shorts за 90 дней', m.shortsViews90, 1e7, fmt, eta ? `В текущем темпе (~${fmt(perDay)} в день) — примерно через ${eta} дн.` : '')}
+        <div class="small dim" style="text-align:center;margin:6px 0">или</div>
+        ${progressRow('Часы просмотра длинных видео за год', m.watchHours365, 4000)}
+        <div class="section-title">Начальный уровень (спонсорство, Super Thanks) ${lvl1 ? '<span class="badge en">выполнено</span>' : ''}</div>
+        <div class="small muted">500 подписчиков + 3 видео за 90 дней + 3 млн просмотров Shorts за 90 дней (или 3000 часов)</div>
+        ${m.exact === false ? '<div class="hint">Не удалось разделить Shorts и длинные видео — показаны все просмотры канала.</div>' : ''}
+      </div>`;
+    }
+    const recent = st.videos.filter((v) => Date.now() - new Date(v.publishedAt).getTime() < 30 * 864e5);
+    const views30 = recent.reduce((x, v) => x + v.views, 0);
+    const long = recent.filter((v) => (v.duration || 0) >= 60);
+    const longViews = long.reduce((x, v) => x + v.views, 0);
+    return `<div class="card">${head}
+      <div class="section-title" style="margin-top:0">Creator Rewards</div>
+      ${progressRow('Подписчики', st.followers, 1e4)}
+      ${progressRow('Просмотры за 30 дней', views30, 1e5, fmt, 'Считаются видео, выложенные за последние 30 дней (приблизительно).')}
+      <div class="section-title">Видео длиннее 1 минуты</div>
+      <div class="row"><div class="grow small">Деньги в TikTok платят только за видео <b>от 1 минуты</b>. За 30 дней таких: <b>${long.length} из ${recent.length}</b>, на них ${fmt(longViews)} просмотров.</div></div>
+      ${recent.length && long.length / recent.length < 0.5 ? '<div class="note-box" style="margin-top:10px">Больше половины видео короче минуты — они не приносят денег в Creator Rewards. Попробуй делать нарезки по 61–90 секунд.</div>' : ''}
+    </div>`;
+  }).join('');
+  return {
+    actions: `<button class="btn primary" data-srefresh ${ui.refreshing ? 'disabled' : ''}>${ui.refreshing ? '<span class="spinner"></span>Обновляю…' : I.refresh + 'Обновить'}</button>`,
+    html: `<div class="grid two" style="align-items:start">${cards}</div>
+      <div class="hint" style="margin-top:14px">Пороги — по правилам YouTube и TikTok на момент создания программы; если платформы их поменяют, ориентируйся на их официальные страницы. Для одобрения важна ещё оригинальность контента: у нарезок ютуберов и стримеров могут быть проблемы с «повторно используемым контентом» — добавляй свои комментарии, монтаж, озвучку.</div>`,
+  };
+}
+
+// ---------- Страница «Telegram» ----------
+function pageTelegram() {
+  const s = S.settings;
+  const t = s.telegram || {};
+  const nt = t.notify || {};
+  const st = ui.tg;
+  const statusHtml = !s.hasTelegramToken ? '<span class="status draft">Бот не подключён</span>'
+    : st.status === 'on' ? `<span class="status published">Бот @${esc(st.botName)} работает</span>`
+    : st.status === 'error' ? `<span class="status error">Ошибка: ${esc(st.error)}</span>` : '<span class="status pending">Запускается…</span>';
+  const tog = (k, label, hint) => `<label class="check"><input type="checkbox" data-tgn="${k}" ${nt[k] !== false ? 'checked' : ''}><span>${label}${hint ? `<div class="small muted">${hint}</div>` : ''}</span></label>`;
+  return {
+    html: `<div class="grid two" style="align-items:start">
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <h3>${I.tg.replace('<svg', '<svg width="18" height="18" style="color:#5fb8ff"')} Бот ${statusHtml}</h3>
+        <label class="field"><span>Токен бота (от @BotFather)</span>
+          <div class="keyline"><input class="input" type="password" id="tgToken" placeholder="${s.hasTelegramToken ? '•••••••• сохранён (впиши новый, чтобы заменить)' : '1234567890:AA…'}">
+          <button class="btn primary" data-tgsave>Сохранить</button></div></label>
+        ${s.hasTelegramToken ? (t.chatId ? `<div class="info-box" style="background:var(--green-soft);border-color:rgba(61,220,151,.4)">✅ Привязан к чату <b>${esc(t.chatName || t.chatId)}</b>
+            <div class="row" style="margin-top:10px"><button class="btn sm" data-tgtest>Отправить проверку</button><button class="btn sm danger" data-tgunlink>Отвязать</button></div></div>`
+          : `<div class="info-box">Открой своего бота${st.botName ? ` <a href="#" data-open="https://t.me/${esc(st.botName)}">@${esc(st.botName)}</a>` : ''} в Telegram и отправь ему:<div style="font-size:22px;font-weight:700;margin:8px 0;user-select:all">/start ${esc(t.pairCode)}</div><div class="small muted">Код нужен, чтобы управлять ботом мог только ты.</div></div>`) : ''}
+        ${s.hasTelegramToken ? '<button class="btn sm ghost danger" data-tgremove>Удалить бота из программы</button>' : ''}
+      </div>
+      <div class="card">
+        <h3>Что присылать</h3>
+        ${tog('published', '🎬 Видео вышло / запланировано', 'В том числе когда YouTube сам открыл запланированное видео')}
+        ${tog('milestones', '🔥 Рубежи просмотров у видео', 'Один раз на каждый рубеж')}
+        <label class="field" style="margin:4px 0 12px 26px"><span>Рубежи просмотров</span><input class="input" id="tgMs" value="${esc(t.milestones)}"></label>
+        ${tog('followers', '🎉 Рубежи подписчиков')}
+        <label class="field" style="margin:4px 0 12px 26px"><span>Рубежи подписчиков</span><input class="input" id="tgFms" value="${esc(t.followerMilestones)}"></label>
+        ${tog('errors', '❌ Ошибки загрузки', 'С кнопкой «Повторить» прямо в Telegram')}
+        ${tog('daily', '🌙 Итоги дня')}
+        <label class="field" style="margin:4px 0 12px 26px"><span>Во сколько присылать итоги</span>
+          <select class="input" id="tgHour" style="width:auto">${Array.from({ length: 24 }, (_, i) => `<option value="${i}" ${+t.dailyHour === i ? 'selected' : ''}>${String(i).padStart(2, '0')}:00</option>`).join('')}</select></label>
+        <button class="btn primary" data-tgsaveopts>Сохранить настройки</button>
+        <div class="hint">Просмотры проверяются при обновлении статистики (настраивается в «Настройках», по умолчанию каждые 3 часа). Бот работает, пока программа запущена — можно свёрнутой в трей.</div>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <h3>Команды бота</h3>
+        ${[['/stats', 'подписчики и просмотры по всем аккаунтам за неделю'], ['/top', 'лучшие видео за 7 дней'], ['/weak', 'видео, которые просели'], ['/queue', 'что запланировано'], ['/drafts', 'черновики с кнопкой «🚀 Выложить» — публикация с телефона'], ['/money', 'прогресс монетизации'], ['/refresh', 'обновить статистику'], ['/analyze', 'ИИ-разбор за 30 дней прямо в чат']].map(([c, d]) => `<div class="trow" style="margin-bottom:6px"><code style="min-width:80px;color:var(--green)">${c}</code><span class="small">${d}</span></div>`).join('')}
+      </div>
+      <div class="card">
+        <h3>Как создать бота (2 минуты)</h3>
+        <details class="guide" open><summary>Инструкция</summary><ol>
+          <li>Открой в Telegram <a href="#" data-open="https://t.me/BotFather">@BotFather</a> и отправь <code>/newbot</code>.</li>
+          <li>Придумай имя (например, «Моя студия») и username, который заканчивается на <code>bot</code>.</li>
+          <li>BotFather пришлёт токен вида <code>1234567890:AA…</code> — вставь его слева и нажми «Сохранить».</li>
+          <li>Открой своего бота и отправь <code>/start</code> с кодом, который появится слева.</li>
+        </ol></details>
+      </div>
+    </div>
+  </div>`,
+  };
+}
+
 // ---------- События ----------
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel]');
+  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove]');
   if (!t || t.closest('#modalRoot .modal') && !t.dataset.open) return;
   const d = t.dataset;
   if (d.open) { e.preventDefault(); call('shell:open', d.open); return; }
@@ -810,6 +1019,23 @@ document.addEventListener('click', async (e) => {
     toast('Ключи сохранены');
     return;
   }
+  if (d.sview) { ui.statsView = d.sview; return render(); }
+  if ('tgsave' in d) {
+    const token = $('#tgToken').value.trim();
+    if (!token) { toast('Вставь токен от @BotFather', 'err'); return; }
+    try { ui.tg = await call('tg:save', { token }); toast(ui.tg.status === 'on' ? `Бот @${ui.tg.botName} подключён` : 'Не удалось подключить бота: ' + ui.tg.error, ui.tg.status === 'on' ? 'ok' : 'err'); } catch (_) { /* */ }
+    return render();
+  }
+  if ('tgsaveopts' in d) {
+    const notify = {};
+    document.querySelectorAll('[data-tgn]').forEach((c) => { notify[c.dataset.tgn] = c.checked; });
+    await call('tg:save', { telegram: { notify, milestones: $('#tgMs').value, followerMilestones: $('#tgFms').value, dailyHour: +$('#tgHour').value } });
+    toast('Настройки уведомлений сохранены');
+    return;
+  }
+  if ('tgtest' in d) { try { await call('tg:test'); toast('Сообщение отправлено — проверь Telegram'); } catch (_) { /* */ } return; }
+  if ('tgunlink' in d) { if (confirm('Отвязать Telegram-чат?')) await call('tg:unlink'); return; }
+  if ('tgremove' in d) { if (confirm('Удалить бота из программы?')) await call('tg:removeToken'); return; }
   if ('tnew' in d) return templateDialog(null);
   if (d.tedit) return templateDialog(d.tedit);
   if (d.tdel) { if (confirm('Удалить шаблон?')) await call('templates:delete', d.tdel); }
@@ -820,7 +1046,8 @@ document.addEventListener('change', async (e) => {
   if (t.closest('#modalRoot')) return;
   if (t.dataset.alang) return call('account:update', t.dataset.alang, { lang: t.value });
   if (t.dataset.agroup) return call('account:update', t.dataset.agroup, { group: t.value });
-  if (['autostart', 'keepInTray', 'tiktokAudited'].includes(t.id)) return call('settings:save', { [t.id]: t.checked });
+  if (t.dataset.atpl !== undefined) return call('account:update', t.dataset.atpl, { templateId: t.value });
+  if (['autostart', 'keepInTray', 'tiktokAudited', 'desktopNotify'].includes(t.id)) return call('settings:save', { [t.id]: t.checked });
   if (t.id === 'statsAutoRefreshHours') return call('settings:save', { statsAutoRefreshHours: +t.value });
 });
 
@@ -849,7 +1076,14 @@ window.api.on('progress', ({ videoId, accountId, pct: p }) => {
   ui._raf = setTimeout(() => { ui._raf = null; render(); }, 400);
 });
 
+window.api.on('tg', (st) => {
+  const changed = st.status !== ui.tg.status || st.botName !== ui.tg.botName;
+  ui.tg = st;
+  if (changed) render();
+});
+
 (async () => {
   S = await call('state:get');
+  ui.tg = await call('tg:status');
   render();
 })();

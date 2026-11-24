@@ -16,8 +16,18 @@ const DEFAULT = {
     anthropicKey: '', // enc
     autostart: true,
     keepInTray: true,
-    statsAutoRefreshHours: 6,
+    statsAutoRefreshHours: 3,
+    desktopNotify: false,
+    telegramToken: '', // enc
+    telegram: {
+      chatId: null, chatName: '', pairCode: '',
+      notify: { published: true, errors: true, milestones: true, followers: true, daily: true },
+      milestones: '1000, 10000, 50000, 100000, 500000, 1000000',
+      followerMilestones: '1000, 5000, 10000, 50000, 100000',
+      dailyHour: 21,
+    },
   },
+  milestones: {},
   accounts: [],
   videos: [],
   stats: {},
@@ -28,11 +38,12 @@ const DEFAULT = {
 
 class Store {
   constructor() {
-    this.file = path.join(app.getPath('userData'), 'videohub-data.json');
+    this.file = path.join(app.getPath('userData'), 'studio-data.json');
     this.data = JSON.parse(JSON.stringify(DEFAULT));
     try {
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf8'));
       this.data = { ...this.data, ...raw, settings: { ...DEFAULT.settings, ...(raw.settings || {}) } };
+      this.data.settings.telegram = { ...DEFAULT.settings.telegram, ...(raw.settings?.telegram || {}), notify: { ...DEFAULT.settings.telegram.notify, ...(raw.settings?.telegram?.notify || {}) } };
     } catch (_) { /* первый запуск */ }
     this._timer = null;
   }
@@ -95,6 +106,9 @@ class Store {
         autostart: s.autostart,
         keepInTray: s.keepInTray,
         statsAutoRefreshHours: s.statsAutoRefreshHours,
+        desktopNotify: s.desktopNotify,
+        hasTelegramToken: !!s.telegramToken,
+        telegram: s.telegram,
       },
       accounts: this.data.accounts.map(({ tokens, ...rest }) => rest),
       videos: this.data.videos,

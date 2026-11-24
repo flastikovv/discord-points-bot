@@ -60,9 +60,9 @@ function pkce(hex = false) {
   return { verifier, challenge: hex ? hash.toString('hex') : b64url(hash) };
 }
 
-const DONE_PAGE = `<!doctype html><meta charset="utf-8"><title>VideoHub</title>
+const DONE_PAGE = `<!doctype html><meta charset="utf-8"><title>Студия Монетизации</title>
 <body style="font-family:Segoe UI,sans-serif;background:#0f0d17;color:#e9e4ff;display:grid;place-items:center;height:100vh;margin:0">
-<div style="text-align:center"><div style="font-size:48px">✅</div><h2>Готово!</h2><p>Можно закрыть эту вкладку и вернуться в VideoHub.</p></div>`;
+<div style="text-align:center"><div style="font-size:48px">✅</div><h2>Готово!</h2><p>Можно закрыть эту вкладку и вернуться в «Студию Монетизации».</p></div>`;
 
 // Локальный сервер, который ловит ответ OAuth (?code=...)
 function oauthLoopback({ port = 0, host = '127.0.0.1', state }) {

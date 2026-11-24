@@ -1,11 +1,11 @@
-// Вставляет иконку и сведения о версии в VideoHub.exe (без wine)
+// Вставляет иконку и сведения о версии в MonetizationStudio.exe (без wine)
 const fs = require('fs');
 const path = require('path');
 const ResEdit = require('resedit');
 const png2icons = require('png2icons');
 
 const root = path.join(__dirname, '..');
-const exe = path.join(root, 'dist', 'win-unpacked', 'VideoHub.exe');
+const exe = path.join(root, 'dist', 'win-unpacked', 'MonetizationStudio.exe');
 const ico = png2icons.createICO(fs.readFileSync(path.join(root, 'assets', 'icon.png')), png2icons.BICUBIC, 0, false, true);
 fs.writeFileSync(path.join(root, 'build', 'icon.ico'), ico);
 
@@ -23,8 +23,8 @@ if (vi) {
   vi.setFileVersion(a, b, c, 0, 1033);
   vi.setProductVersion(a, b, c, 0, 1033);
   vi.setStringValues({ lang: 1033, codepage: 1200 }, {
-    FileDescription: 'VideoHub', ProductName: 'VideoHub', CompanyName: 'VideoHub',
-    OriginalFilename: 'VideoHub.exe', InternalName: 'VideoHub', LegalCopyright: '',
+    FileDescription: 'Студия Монетизации', ProductName: 'Студия Монетизации', CompanyName: 'Студия Монетизации',
+    OriginalFilename: 'MonetizationStudio.exe', InternalName: 'MonetizationStudio', LegalCopyright: '',
   });
   vi.outputToResourceEntries(res.entries);
 }

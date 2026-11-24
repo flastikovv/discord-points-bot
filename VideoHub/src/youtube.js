@@ -245,4 +245,39 @@ async function fetchDetail(store, acc, videoId, publishedAt) {
   return out;
 }
 
-module.exports = { connect, upload, fetchStats, fetchDetail };
+// Прогресс к Партнёрской программе YouTube:
+// 1000 подписчиков + (10 млн просмотров Shorts за 90 дней ИЛИ 4000 часов просмотра длинных видео за 365 дней)
+async function fetchMonetization(store, acc) {
+  const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+  const out = { fetchedAt: Date.now(), subs: acc.followers || 0 };
+  const byType = async (days) => {
+    try {
+      const r = await get(store, acc, `${ANALYTICS}?` + new URLSearchParams({
+        ids: 'channel==MINE', startDate: daysAgo(days), endDate: today(),
+        metrics: 'views,estimatedMinutesWatched', dimensions: 'creatorContentType',
+      }));
+      const rows = r.rows || [];
+      const shorts = rows.filter((x) => String(x[0]).toUpperCase() === 'SHORTS');
+      const longs = rows.filter((x) => String(x[0]).toUpperCase() !== 'SHORTS');
+      return {
+        shortsViews: shorts.reduce((s, x) => s + x[1], 0),
+        longMinutes: longs.reduce((s, x) => s + x[2], 0),
+        exact: true,
+      };
+    } catch (_) {
+      const r = await get(store, acc, `${ANALYTICS}?` + new URLSearchParams({
+        ids: 'channel==MINE', startDate: daysAgo(days), endDate: today(), metrics: 'views,estimatedMinutesWatched',
+      }));
+      const row = r.rows?.[0] || [0, 0];
+      return { shortsViews: row[0], longMinutes: row[1], exact: false };
+    }
+  };
+  const d90 = await byType(90);
+  const d365 = await byType(365);
+  out.shortsViews90 = d90.shortsViews;
+  out.watchHours365 = Math.round(d365.longMinutes / 60);
+  out.exact = d90.exact && d365.exact;
+  return out;
+}
+
+module.exports = { connect, upload, fetchStats, fetchDetail, fetchMonetization };

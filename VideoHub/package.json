@@ -1,13 +1,13 @@
 {
-  "name": "videohub",
-  "version": "1.0.0",
-  "description": "Загрузка видео на YouTube и TikTok, статистика и ИИ-анализ",
+  "name": "monetization-studio",
+  "version": "1.1.0",
+  "description": "Студия Монетизации: загрузка видео на YouTube и TikTok, статистика, ИИ-анализ и Telegram-бот",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --x64 && node build/patch-exe.js && cd build && makensis -DVERSION=1.0.0 installer.nsi"
+    "dist": "electron-builder --win --x64 && node build/patch-exe.js && cd build && makensis -DVERSION=1.1.0 installer.nsi"
   },
-  "author": "VideoHub",
+  "author": "Студия Монетизации",
   "license": "UNLICENSED",
   "devDependencies": {
     "electron": "^33.2.1",
@@ -18,10 +18,10 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.13.0"
   },
-  "productName": "VideoHub",
+  "productName": "Студия Монетизации",
   "build": {
-    "appId": "com.videohub.app",
-    "productName": "VideoHub",
+    "appId": "com.monetization.studio",
+    "productName": "Студия Монетизации",
     "directories": {
       "output": "dist"
     },
@@ -44,13 +44,14 @@
         }
       ],
       "icon": "assets/icon.png",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "executableName": "MonetizationStudio"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "VideoHub"
+      "shortcutName": "Студия Монетизации"
     }
   }
 }

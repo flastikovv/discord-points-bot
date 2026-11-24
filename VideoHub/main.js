@@ -1,4 +1,4 @@
-// VideoHub — главный процесс: окно, трей, расписание публикаций, связь с интерфейсом.
+// Студия Монетизации — главный процесс: окно, трей, расписание публикаций, связь с интерфейсом.
 const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, Notification, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -6,13 +6,18 @@ const { Store } = require('./src/store');
 const youtube = require('./src/youtube');
 const tiktok = require('./src/tiktok');
 const ai = require('./src/ai');
+const { TelegramBot, mdToTg } = require('./src/telegram');
 
+// Своя папка для данных: %APPDATA%\\MonetizationStudio
+app.setPath('userData', path.join(app.getPath('appData'), 'MonetizationStudio'));
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
-app.setAppUserModelId('com.videohub.app');
+app.setAppUserModelId('com.monetization.studio');
+const APP_NAME = 'Студия Монетизации';
 
 let store;
 let win;
 let tray;
+let tg;
 let quitting = false;
 const busy = new Set(); // идущие загрузки videoId:accountId
 
@@ -23,14 +28,19 @@ function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 function pushState() { send('state', store.publicState()); }
+// Уведомление на рабочем столе (по желанию) — основное уведомление идёт в Telegram
 function notify(title, body) {
+  if (!store?.data.settings.desktopNotify) return;
   try { new Notification({ title, body, icon: ICON }).show(); } catch (_) { /* */ }
 }
+const h = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const n = (x) => (x == null ? '—' : x >= 1e6 ? (x / 1e6).toFixed(1).replace('.0', '') + 'M' : x >= 1e4 ? (x / 1e3).toFixed(1).replace('.0', '') + 'K' : Math.round(x).toLocaleString('ru-RU'));
+const pfIcon = (p) => (p === 'youtube' ? '🟥 YouTube' : '⬛ TikTok');
 
 function createWindow(hidden) {
   win = new BrowserWindow({
     width: 1360, height: 860, minWidth: 1050, minHeight: 680,
-    backgroundColor: '#0f0d17', title: 'VideoHub', icon: ICON, show: !hidden,
+    backgroundColor: '#0f0d17', title: APP_NAME, icon: ICON, show: !hidden,
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
@@ -41,7 +51,7 @@ function createWindow(hidden) {
       win.hide();
       if (!store.data._trayHint) {
         store.data._trayHint = true; store.save();
-        notify('VideoHub работает в фоне', 'Программа свёрнута в трей и выложит запланированные видео в TikTok вовремя.');
+        try { new Notification({ title: APP_NAME + ' работает в фоне', body: 'Программа свёрнута в трей: выложит запланированные видео и пришлёт уведомления в Telegram.', icon: ICON }).show(); } catch (_) { /* */ }
       }
     }
   });
@@ -50,9 +60,9 @@ function createWindow(hidden) {
 
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
-  tray.setToolTip('VideoHub');
+  tray.setToolTip(APP_NAME);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Открыть VideoHub', click: () => { win.show(); win.focus(); } },
+    { label: 'Открыть ' + APP_NAME, click: () => { win.show(); win.focus(); } },
     { type: 'separator' },
     { label: 'Выход', click: () => { quitting = true; app.quit(); } },
   ]));
@@ -102,9 +112,15 @@ async function runTarget(video, result) {
     Object.assign(result, out, { progress: 100, doneAt: Date.now() });
     const label = { published: 'опубликовано', scheduled: 'запланировано на YouTube', inbox: 'отправлено во «Входящие» TikTok', processing: 'обрабатывается' }[out.status] || out.status;
     notify(`✅ ${acc.name}`, `«${video.title}» — ${label}`);
+    if (out.status === 'published' || out.status === 'inbox') result.tgNotified = true;
+    tg?.notify('published', {
+      text: `${out.status === 'scheduled' ? '🕒' : '✅'} <b>${h(video.title)}</b>\n${pfIcon(acc.platform)} · ${h(acc.name)}\n${h(label)}${out.status === 'scheduled' ? ' — выйдет ' + new Date(video.scheduleAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : ''}${out.private ? '\n🔒 приватно (TikTok ещё не одобрил приложение)' : ''}`,
+      buttons: out.url ? [[{ text: 'Открыть видео', url: out.url }]] : undefined,
+    });
   } catch (e) {
     Object.assign(result, { status: 'error', error: e.message });
     notify(`❌ Ошибка: ${acc.name}`, `«${video.title}»: ${e.message}`);
+    tg?.notify('errors', { text: `❌ <b>Не удалось выложить</b> «${h(video.title)}»\n${pfIcon(acc.platform)} · ${h(acc.name)}\n${h(e.message)}`, buttons: [[{ text: '🔁 Повторить', data: `retry:${video.id}:${acc.id}` }]] });
   } finally {
     busy.delete(key);
     video.status = videoStatus(video);
@@ -146,6 +162,27 @@ async function tick() {
         if (r.status === 'queued' && v.scheduleAt && new Date(v.scheduleAt).getTime() <= now) await runTarget(v, r);
       }
     }
+    // YouTube сам открыл запланированное видео — сообщаем, что вышло
+    for (const v of store.data.videos) {
+      if (!v.scheduleAt || new Date(v.scheduleAt).getTime() > now) continue;
+      for (const r of v.results || []) {
+        if (r.status !== 'scheduled') continue;
+        r.status = 'published';
+        r.tgNotified = true;
+        const a = store.account(r.accountId);
+        tg?.notify('published', { text: `🎬 <b>Вышло:</b> ${h(v.title)}\n${pfIcon(a?.platform)} · ${h(a?.name)}`, buttons: r.url ? [[{ text: 'Открыть видео', url: r.url }]] : undefined });
+        v.status = videoStatus(v);
+        store.save(); pushState();
+      }
+    }
+    // Сводка дня
+    const tcfg = store.data.settings.telegram || {};
+    const d = new Date();
+    const dayKey = d.toDateString();
+    if (tcfg.chatId && d.getHours() === +tcfg.dailyHour && store.data._lastDaily !== dayKey) {
+      store.data._lastDaily = dayKey; store.save();
+      refreshStats().catch(() => {}).finally(() => tg?.notify('daily', '🌙 <b>Итоги дня</b>\n\n' + summaryText(1)));
+    }
     const hours = store.data.settings.statsAutoRefreshHours || 0;
     if (hours > 0 && now - (store.data._lastAutoStats || 0) > hours * 3600e3 && store.data.accounts.length) {
       store.data._lastAutoStats = now;
@@ -172,9 +209,14 @@ async function refreshStats(accountId) {
         if (!h.length || t - h[h.length - 1][0] > 30 * 60e3) h.push([t, v.views]);
         history[v.id] = h.slice(-120);
       }
+      checkMilestones(acc, prev, res);
+      let monetization = prev.monetization;
+      if (acc.platform === 'youtube') {
+        try { monetization = await youtube.fetchMonetization(store, acc); } catch (_) { /* */ }
+      }
       const fh = prev.followersHistory || [];
       fh.push([t, res.followers || 0]);
-      store.data.stats[acc.id] = { fetchedAt: t, followers: res.followers, videos: res.videos, history, followersHistory: fh.slice(-200) };
+      store.data.stats[acc.id] = { fetchedAt: t, followers: res.followers, videos: res.videos, history, followersHistory: fh.slice(-200), monetization };
       // ссылки на опубликованные из программы видео
       for (const vid of store.data.videos) {
         for (const r of vid.results || []) {
@@ -190,6 +232,143 @@ async function refreshStats(accountId) {
   store.save(); pushState();
   if (errors.length) throw new Error(errors.join('\n'));
   return true;
+}
+
+const parseList = (str) => String(str || '').split(/[\s,;]+/).map(Number).filter((x) => x > 0).sort((a, b) => a - b);
+
+// Рубежи просмотров и подписчиков → сообщение в Telegram (один раз на рубеж)
+function checkMilestones(acc, prev, res) {
+  const cfg = store.data.settings.telegram || {};
+  const marks = parseList(cfg.milestones);
+  const ms = store.data.milestones;
+  const first = !prev.fetchedAt; // при первом подключении не засыпаем уведомлениями
+  for (const v of res.videos) {
+    const key = acc.id + ':' + v.id;
+    const reached = marks.filter((m) => v.views >= m).pop() || 0;
+    if (ms[key] == null || first) { ms[key] = reached; continue; }
+    if (reached > ms[key]) {
+      ms[key] = reached;
+      tg?.notify('milestones', {
+        text: `🔥 <b>${n(reached)} просмотров!</b>\n«${h(v.title)}»\n${pfIcon(acc.platform)} · ${h(acc.name)}\nСейчас: ${n(v.views)} 👁 · ${n(v.likes)} ❤️`,
+        buttons: v.url ? [[{ text: 'Открыть видео', url: v.url }]] : undefined,
+      });
+    }
+  }
+  const fm = parseList(cfg.followerMilestones);
+  const fkey = acc.id + ':followers';
+  const fr = fm.filter((m) => (res.followers || 0) >= m).pop() || 0;
+  if (ms[fkey] == null || first) ms[fkey] = fr;
+  else if (fr > ms[fkey]) {
+    ms[fkey] = fr;
+    tg?.notify('followers', `🎉 <b>${h(acc.name)}</b>: ${n(fr)} подписчиков!\n${pfIcon(acc.platform)}`);
+  }
+}
+
+function periodVideos(days) {
+  const since = Date.now() - days * 864e5;
+  const out = [];
+  for (const a of store.data.accounts) {
+    for (const v of store.data.stats[a.id]?.videos || []) {
+      const t = new Date(v.publishedAt).getTime();
+      if (t >= since && t <= Date.now()) out.push({ a, v });
+    }
+  }
+  return out;
+}
+
+function summaryText(days = 7) {
+  if (!store.data.accounts.length) return 'Аккаунтов пока нет.';
+  const lines = store.data.accounts.map((a) => {
+    const st = store.data.stats[a.id];
+    if (!st) return `${pfIcon(a.platform)} <b>${h(a.name)}</b> — нет данных`;
+    const since = Date.now() - days * 864e5;
+    const vids = st.videos.filter((v) => new Date(v.publishedAt).getTime() >= since && new Date(v.publishedAt).getTime() <= Date.now());
+    const views = vids.reduce((s, v) => s + v.views, 0);
+    const fh = st.followersHistory || [];
+    const old = fh.find((p) => p[0] >= since);
+    const delta = old ? st.followers - old[1] : 0;
+    return `${pfIcon(a.platform)} <b>${h(a.name)}</b>${a.lang ? ' ' + a.lang.toUpperCase() : ''}\n   👥 ${n(st.followers)}${delta ? ` (${delta > 0 ? '+' : ''}${n(delta)})` : ''} · 🎬 ${vids.length} видео · 👁 ${n(views)}`;
+  });
+  const all = periodVideos(days).sort((x, y) => y.v.views - x.v.views);
+  const best = all[0];
+  return `${lines.join('\n')}${best ? `\n\n🏆 Лучшее за ${days === 1 ? 'день' : days + ' дн'}: «${h(best.v.title)}» — ${n(best.v.views)} 👁 (${h(best.a.name)})` : ''}`;
+}
+
+function monetizationText() {
+  const lines = store.data.accounts.map((a) => {
+    const st = store.data.stats[a.id];
+    if (!st) return `${pfIcon(a.platform)} <b>${h(a.name)}</b> — нет данных`;
+    if (a.platform === 'youtube') {
+      const m = st.monetization || {};
+      const p = (x, max) => Math.min(100, Math.round(((x || 0) / max) * 100));
+      return `🟥 <b>${h(a.name)}</b>\n   Подписчики: ${n(st.followers)}/1000 (${p(st.followers, 1000)}%)\n   Shorts за 90 дн: ${n(m.shortsViews90)}/10M (${p(m.shortsViews90, 1e7)}%)\n   Часы длинных за год: ${n(m.watchHours365)}/4000 (${p(m.watchHours365, 4000)}%)`;
+    }
+    const views30 = st.videos.filter((v) => Date.now() - new Date(v.publishedAt).getTime() < 30 * 864e5).reduce((s, v) => s + v.views, 0);
+    return `⬛ <b>${h(a.name)}</b>\n   Подписчики: ${n(st.followers)}/10K (${Math.min(100, Math.round((st.followers / 1e4) * 100))}%)\n   Просмотры за 30 дн: ~${n(views30)}/100K (${Math.min(100, Math.round((views30 / 1e5) * 100))}%)`;
+  });
+  return '💰 <b>Прогресс монетизации</b>\n\n' + lines.join('\n\n');
+}
+
+function initTelegram() {
+  tg = new TelegramBot(store, {
+    onLinked: () => pushState(),
+    commands: {
+      stats: async () => '📊 <b>За 7 дней</b>\n\n' + summaryText(7),
+      top: async () => {
+        const list = periodVideos(7).sort((x, y) => y.v.views - x.v.views).slice(0, 8);
+        if (!list.length) return 'За 7 дней видео нет.';
+        return '🏆 <b>Лучшие за 7 дней</b>\n\n' + list.map((x, i) => `${i + 1}. «${h(x.v.title)}»\n   ${n(x.v.views)} 👁 · ${n(x.v.likes)} ❤️${x.v.avgViewPct ? ' · досмотр ' + Math.round(x.v.avgViewPct) + '%' : ''} — ${h(x.a.name)}`).join('\n');
+      },
+      weak: async () => {
+        const list = periodVideos(7).filter((x) => Date.now() - new Date(x.v.publishedAt).getTime() > 864e5).sort((x, y) => x.v.views - y.v.views).slice(0, 6);
+        if (!list.length) return 'Нет видео старше суток за последние 7 дней.';
+        return '📉 <b>Меньше всего просмотров (7 дн)</b>\n\n' + list.map((x) => `• «${h(x.v.title)}» — ${n(x.v.views)} 👁${x.v.avgViewPct ? ', досмотр ' + Math.round(x.v.avgViewPct) + '%' : ''} (${h(x.a.name)})`).join('\n') + '\n\nПодробный разбор: /analyze';
+      },
+      queue: async () => {
+        const items = [];
+        for (const v of store.data.videos) for (const r of v.results || []) {
+          if (['queued', 'scheduled'].includes(r.status)) items.push({ v, r, a: store.account(r.accountId) });
+        }
+        if (!items.length) return 'Ничего не запланировано.';
+        items.sort((x, y) => new Date(x.v.scheduleAt) - new Date(y.v.scheduleAt));
+        return '🗓 <b>Запланировано</b>\n\n' + items.map((x) => `• ${new Date(x.v.scheduleAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} — «${h(x.v.title)}» → ${h(x.a?.name)}`).join('\n');
+      },
+      drafts: async () => {
+        const list = store.data.videos.filter((v) => v.status === 'draft').slice(0, 10);
+        if (!list.length) return 'Черновиков нет.';
+        return {
+          text: '📝 <b>Черновики</b>\nНажми, чтобы выложить сейчас:\n\n' + list.map((v) => `• «${h(v.title || 'Без названия')}» → ${(v.accountIds || []).map((id) => h(store.account(id)?.name)).join(', ') || 'аккаунты не выбраны'}`).join('\n'),
+          buttons: list.map((v) => [{ text: `🚀 ${(v.title || 'Без названия').slice(0, 40)}`, data: `pub:${v.id}` }]),
+        };
+      },
+      money: async () => monetizationText(),
+      refresh: async () => { await refreshStats().catch(() => {}); return '🔄 Статистика обновлена.\n\n' + summaryText(7); },
+      analyze: async () => {
+        await tg.send('🧠 Запускаю анализ, это займёт около минуты…');
+        const r = await analyze({ days: 30 });
+        return '🧠 <b>Разбор за 30 дней</b>\n\n' + mdToTg(r.text);
+      },
+    },
+    callback: async (data) => {
+      const [kind, id, accId] = data.split(':');
+      if (kind === 'pub') {
+        const v = store.data.videos.find((x) => x.id === id);
+        if (!v) return 'Видео не найдено.';
+        if (v.status !== 'draft') return 'Это видео уже выложено или в очереди.';
+        publish(id, null).catch((e) => tg.send('❌ ' + h(e.message)));
+        return `🚀 Начинаю загрузку «${h(v.title)}». Сообщу, когда выйдет.`;
+      }
+      if (kind === 'retry') {
+        const v = store.data.videos.find((x) => x.id === id);
+        const r = v?.results?.find((x) => x.accountId === accId);
+        if (!r) return 'Нечего повторять.';
+        runTarget(v, r);
+        return '🔁 Пробую ещё раз…';
+      }
+      return null;
+    },
+  });
+  tg.start();
 }
 
 async function videoDetail(accountId, videoId) {
@@ -285,6 +464,11 @@ async function analyze({ days = 30, accountIds = [], question = '', weakCount = 
   return entry;
 }
 
+function tgStatus() {
+  return { status: tg?.status || 'off', botName: tg?.botName || '', error: tg?.lastError || '' };
+}
+function pushStatus() { send('tg', tgStatus()); }
+
 // ---------- IPC ----------
 
 function handle(name, fn) {
@@ -326,7 +510,7 @@ function registerIpc() {
   handle('account:update', (id, patch) => {
     const acc = store.account(id);
     if (!acc) throw new Error('Нет такого аккаунта');
-    for (const k of ['lang', 'group', 'label', 'color']) if (k in patch) acc[k] = patch[k];
+    for (const k of ['lang', 'group', 'label', 'color', 'templateId']) if (k in patch) acc[k] = patch[k];
     store.save(); pushState();
   });
   handle('account:remove', (id) => {
@@ -401,6 +585,25 @@ function registerIpc() {
   });
   handle('templates:delete', (id) => { store.data.templates = store.data.templates.filter((x) => x.id !== id); store.save(); pushState(); });
 
+  handle('tg:save', async (patch) => {
+    const s = store.data.settings;
+    if (patch.token) s.telegramToken = store.enc(patch.token.trim());
+    s.telegram = { ...s.telegram, ...(patch.telegram || {}), notify: { ...s.telegram.notify, ...(patch.telegram?.notify || {}) } };
+    if (!s.telegram.pairCode) s.telegram.pairCode = String(Math.floor(100000 + Math.random() * 900000));
+    store.save();
+    if (patch.token) await tg.start();
+    pushState();
+    return tgStatus();
+  });
+  handle('tg:status', () => tgStatus());
+  handle('tg:test', async () => {
+    if (!store.data.settings.telegram.chatId) throw new Error('Бот ещё не привязан — отправь ему /start КОД');
+    await tg.send(`👋 Проверка связи. «${APP_NAME}» на связи!\n\n` + summaryText(7));
+    return true;
+  });
+  handle('tg:unlink', () => { Object.assign(store.data.settings.telegram, { chatId: null, chatName: '', pairCode: String(Math.floor(100000 + Math.random() * 900000)) }); store.save(); pushState(); });
+  handle('tg:removeToken', () => { tg.stop(); store.data.settings.telegramToken = ''; store.data.settings.telegram.chatId = null; store.save(); pushState(); });
+
   handle('shell:open', (url) => shell.openExternal(url));
   handle('shell:showFile', (p) => shell.showItemInFolder(p));
   handle('app:version', () => app.getVersion());
@@ -421,6 +624,9 @@ app.whenReady().then(() => {
   createWindow(process.argv.includes('--hidden'));
   createTray();
   applyAutostart();
+  if (!store.data.settings.telegram.pairCode) { store.data.settings.telegram.pairCode = String(Math.floor(100000 + Math.random() * 900000)); store.save(); }
+  initTelegram();
+  setInterval(() => pushStatus(), 15e3);
   setInterval(tick, 30e3);
   setTimeout(tick, 5000);
 });
