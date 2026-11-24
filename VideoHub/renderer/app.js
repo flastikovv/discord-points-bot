@@ -101,7 +101,7 @@ const PAGES = [
   { id: 'videos', title: 'Видео', sub: 'Добавь ролики, впиши название и описание, выбери, куда выложить', icon: I.video },
   { id: 'published', title: 'Выложенные', sub: 'Что загружается, что запланировано и что уже вышло', icon: I.send },
   { id: 'stats', title: 'Статистика', sub: 'Цифры по каждому видео, лучшее время публикации, сравнение RU и EN', icon: I.chart },
-  { id: 'analysis', title: 'Анализ', sub: 'ИИ разбирает статистику и подсказывает, как улучшить видео', icon: I.brain },
+  { id: 'analysis', title: 'Анализ', sub: 'Разбор статистики: что заходит, что просело и что улучшить', icon: I.brain },
   { id: 'money', title: 'Монетизация', sub: 'Сколько осталось до партнёрки YouTube и монетизации TikTok', icon: I.money },
   { id: 'telegram', title: 'Telegram', sub: 'Уведомления и управление с телефона через своего бота', icon: I.tg },
 ];
@@ -250,7 +250,7 @@ function openEditor(id, preset = {}) {
             <input class="input" id="tags" value="${esc(tagsStr)}" placeholder="#истории #shorts #страшилки"></label>
           <div class="ai-box">
             <div class="row"><b>${I.spark.replace('<svg', '<svg width="16" height="16" style="vertical-align:-3px;color:var(--green)"')} Помощь ИИ</b><span class="grow"></span>
-              <button class="btn sm violet" id="aiBtn" ${aiBusy ? 'disabled' : ''}>${aiBusy ? '<span class="spinner"></span>Думаю…' : 'Идеи названий, описание, хук'}</button></div>
+              <button class="btn sm violet" id="aiBtn" ${aiBusy ? 'disabled' : ''}>${aiBusy ? '<span class="spinner"></span>Думаю…' : (S.settings.hasAnthropicKey ? 'Идеи названий, описание, хук' : 'Скопировать запрос для Claude')}</button></div>
             ${aiText ? `<div class="md small" style="margin-top:10px">${md(aiText)}</div>` : '<div class="hint">Claude предложит варианты названий, описание, хэштеги и идею для первых секунд.</div>'}
           </div>
           <div class="subcard">
@@ -359,6 +359,14 @@ function openEditor(id, preset = {}) {
     };
     $('#aiBtn').onclick = async () => {
       collect();
+      if (!S.settings.hasAnthropicKey) {
+        const l = v.lang === 'en' ? 'английском' : 'русском';
+        const prompt = `Я выкладываю ${v.kind === 'clips' ? 'нарезку ютубера/стримера' : 'видео-историю'} в YouTube Shorts и TikTok.\nТекущее название: «${v.title || '-'}»\nОписание: «${v.description || '-'}»\n\nПредложи на ${l} языке:\n1. 6 вариантов цепляющего названия (до 70 символов, без обманного кликбейта).\n2. Короткое описание (2–3 предложения).\n3. 8–12 хэштегов.\n4. Идею для первых 2 секунд видео, чтобы зрители не свайпали.\nОтвет — коротко, списками.`;
+        await copyText(prompt);
+        aiText = '**Запрос скопирован.** Открой чат Claude, вставь (Ctrl+V) и отправь — он предложит названия, описание, хэштеги и хук.';
+        draw();
+        return;
+      }
       aiBusy = true; draw();
       try { aiText = await call('ai:titles', { title: v.title, description: v.description, lang: v.lang, kind: v.kind }); } catch (_) { /* */ }
       aiBusy = false; draw();
@@ -583,7 +591,7 @@ function pageAnalysis() {
   const cur = S.analyses.find((x) => x.id === ui.analysisSel) || S.analyses[0];
   const hist = S.analyses.map((x) => `<div class="hist-item ${cur && x.id === cur.id ? 'on' : ''}" data-asel="${x.id}">
       <div class="row"><b class="small">${dt(x.createdAt)}</b><span class="grow"></span><span class="badge">${x.days} дн</span></div>
-      <div class="small muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.question || x.accounts.join(', '))}</div></div>`).join('');
+      <div class="small muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${x.source === 'local' ? 'встроенный · ' : 'Claude · '}${esc(x.question || x.accounts.join(', '))}</div></div>`).join('');
   const html = `<div class="analysis-layout">
     <div>
       <div class="card">
@@ -596,15 +604,21 @@ function pageAnalysis() {
           <select class="input" id="aweak">${[3, 5, 8, 10].map((n) => `<option ${o.weakCount === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="field"><span>Свой вопрос (необязательно)</span>
           <textarea class="input" id="aq" rows="3" placeholder="Например: что добавить в видео, чтобы досматривали до конца? Какое время публикации лучше?">${esc(o.question)}</textarea></label>
-        <button class="btn primary" style="width:100%;justify-content:center" data-arun ${ui.analysisRunning || !S.settings.hasAnthropicKey ? 'disabled' : ''}>${ui.analysisRunning ? '<span class="spinner"></span>Анализирую…' : I.brain + 'Запустить анализ'}</button>
-        ${!S.settings.hasAnthropicKey ? '<div class="hint">Для анализа нужен ключ Claude — добавь его в «Настройках».</div>' : '<div class="hint">Программа обновит статистику, найдёт видео, которые набрали меньше всего просмотров относительно твоих обычных, загрузит их удержание и попросит Claude сделать выводы.</div>'}
+        <button class="btn primary" style="width:100%;justify-content:center" data-arun ${ui.analysisRunning ? 'disabled' : ''}>${ui.analysisRunning ? '<span class="spinner"></span>Анализирую…' : I.brain + 'Запустить анализ'}</button>
+        <div class="hint">${S.settings.hasAnthropicKey ? 'Разбор сделает Claude по твоему ключу API.' : 'Бесплатно, прямо в программе: найдёт видео, которые набрали меньше обычного, и объяснит по цифрам, почему.'}</div>
+        <div class="section-title" style="margin-top:16px">Умный разбор через чат Claude</div>
+        <div class="row" style="gap:8px">
+          <button class="btn sm grow" style="justify-content:center" data-aprompt ${ui.analysisRunning ? 'disabled' : ''}>${I.copy}1. Скопировать</button>
+          <button class="btn sm grow" style="justify-content:center" data-apaste>${I.edit}2. Вставить ответ</button>
+        </div>
+        <div class="hint">Без ключей и доплат: вставь скопированное в обычный чат Claude, скопируй его ответ и нажми «Вставить ответ» — разбор сохранится здесь.</div>
       </div>
       ${hist ? `<div class="section-title">История анализов</div><div class="card" style="padding:6px">${hist}</div>` : ''}
     </div>
     <div>
       ${ui.analysisRunning ? `<div class="card loading-card" style="margin-bottom:16px"><span class="spinner"></span><div><b>Собираю статистику и думаю…</b><div class="small muted">Обычно это занимает 30–90 секунд.</div></div></div>` : ''}
       ${cur ? `<div class="card">
-        <div class="row"><h3 style="margin:0">Разбор за ${cur.days} дн</h3><span class="small muted">${dt(cur.createdAt)} · ${esc(cur.accounts.join(', '))}</span><span class="grow"></span>
+        <div class="row"><h3 style="margin:0">Разбор за ${cur.days} дн</h3><span class="small muted">${dt(cur.createdAt)} · ${esc(cur.accounts.join(', '))}</span><span class="badge ${cur.source === 'local' ? '' : 'en'}">${cur.source === 'local' ? 'встроенный анализ' : 'Claude'}</span><span class="grow"></span>
           <button class="icon-btn" title="Копировать текст" data-acopy="${cur.id}">${I.copy}</button><button class="icon-btn" title="Удалить" data-adel="${cur.id}">${I.trash}</button></div>
         ${cur.question ? `<div class="info-box" style="margin-top:12px">Вопрос: ${esc(cur.question)}</div>` : ''}
         ${cur.weakest?.length ? `<div class="section-title">Меньше всего просмотров</div>${cur.weakest.map((w) => `<div class="weak">${pf(w.platform)}<span class="grow">${esc(w.title)}<span class="small dim"> · ${esc(w.account)}</span></span><b class="down">${fmt(w.views)}</b>
@@ -654,7 +668,7 @@ function pageSettings() {
           <label class="check"><input type="checkbox" id="tiktokAudited" ${s.tiktokAudited ? 'checked' : ''}>TikTok одобрил приложение (можно публиковать открыто)</label>
         </div>
         <div class="subcard" style="margin:0"><h4>${I.spark.replace('<svg', '<svg width="16" height="16" style="color:var(--green)"')} Claude (для анализа)</h4>
-          <label class="field" style="margin:0"><span>API-ключ Anthropic</span>${secret('anthropicKey', s.hasAnthropicKey, 'sk-ant-…')}</label>
+          <label class="field" style="margin:0"><span>API-ключ Anthropic (необязательно, платно — без него анализ работает бесплатно)</span>${secret('anthropicKey', s.hasAnthropicKey, 'sk-ant-…')}</label>
         </div>
         <div class="row" style="margin-top:14px"><button class="btn primary" data-savekeys>Сохранить ключи</button></div>
       </div>
@@ -692,7 +706,7 @@ function pageSettings() {
           <li>Пока приложение не прошло проверку, добавь свои аккаунты в «Sandbox → Target users» — так можно входить и загружать (видео будут приватными, или отправляй в черновики).</li>
           <li>Отправь приложение на проверку (Submit for review). После одобрения поставь галочку «TikTok одобрил приложение» — видео будут выходить открыто.</li>
         </ol></details>
-        <details class="guide"><summary>3. Claude — ключ для анализа</summary><ol>
+        <details class="guide"><summary>3. Claude — ключ для анализа (необязательно, платно)</summary><ol>
           <li>Открой <a href="#" data-open="https://console.anthropic.com/settings/keys">console.anthropic.com</a>, войди и пополни баланс (хватит $5–10 надолго).</li>
           <li>«API Keys» → «Create Key», скопируй ключ <code>sk-ant-…</code> сюда.</li>
           <li>Один анализ стоит примерно несколько центов.</li>
@@ -705,6 +719,36 @@ function pageSettings() {
     </div>
   </div>`;
   return { html };
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (__) { /* */ }
+    ta.remove(); return true;
+  }
+}
+
+function pasteAnswerDialog() {
+  const root = $('#modalRoot');
+  root.innerHTML = `<div class="overlay"><div class="modal narrow">
+    <header><h2>Ответ Claude</h2><span class="grow"></span><button class="icon-btn" data-close>${I.x}</button></header>
+    <div class="mbody">
+      <div class="hint" style="margin:0 0 10px">Скопируй весь ответ Claude из чата и вставь сюда (Ctrl+V). Он сохранится в истории анализов.</div>
+      <textarea class="input" id="answer" rows="14" placeholder="Вставь ответ сюда…"></textarea>
+    </div>
+    <footer><span class="grow"></span><button class="btn" data-close>Отмена</button><button class="btn primary" data-ok>Сохранить разбор</button></footer>
+  </div></div>`;
+  const close = () => { root.innerHTML = ''; };
+  root.querySelectorAll('[data-close]').forEach((b) => { b.onclick = close; });
+  $('#answer').focus();
+  root.querySelector('[data-ok]').onclick = async () => {
+    const o = ui.analysisOpts;
+    try {
+      const r = await call('analysis:import', { text: $('#answer').value, days: o.days, question: o.question, accountIds: o.accountIds });
+      ui.analysisSel = r.id; close(); toast('Разбор сохранён'); render();
+    } catch (_) { /* */ }
+  };
 }
 
 function templateDialog(id) {
@@ -942,7 +986,7 @@ function pageTelegram() {
 
 // ---------- События ----------
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove]');
+  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove],[data-aprompt],[data-apaste]');
   if (!t || t.closest('#modalRoot .modal') && !t.dataset.open) return;
   const d = t.dataset;
   if (d.open) { e.preventDefault(); call('shell:open', d.open); return; }
@@ -1000,6 +1044,17 @@ document.addEventListener('click', async (e) => {
     ui.analysisRunning = false; render();
     return;
   }
+  if ('aprompt' in d) {
+    ui.analysisOpts.question = $('#aq').value.trim();
+    ui.analysisOpts.weakCount = +$('#aweak').value;
+    try {
+      const r = await call('ai:analyze', { ...ui.analysisOpts, mode: 'prompt' });
+      await copyText(r.prompt);
+      toast('Скопировано. Открой чат Claude, вставь (Ctrl+V) и отправь. Потом скопируй ответ и нажми «2. Вставить ответ».', 'info', 9000);
+    } catch (_) { /* */ }
+    return;
+  }
+  if ('apaste' in d) return pasteAnswerDialog();
   if (d.asel) { ui.analysisSel = d.asel; return render(); }
   if (d.adel) { if (confirm('Удалить этот анализ?')) await call('analysis:delete', d.adel); return; }
   if (d.acopy) { const a = S.analyses.find((x) => x.id === d.acopy); navigator.clipboard.writeText(a.text); toast('Скопировано'); return; }

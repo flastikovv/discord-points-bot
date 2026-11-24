@@ -77,4 +77,4 @@ function titlesPrompt({ title, description, lang, kind }) {
 Ответ — коротко, списками.`;
 }
 
-module.exports = { ask, analysisPrompt, titlesPrompt, MODEL };
+module.exports = { ask, analysisPrompt, titlesPrompt, MODEL, SYSTEM };

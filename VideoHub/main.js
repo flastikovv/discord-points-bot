@@ -6,6 +6,7 @@ const { Store } = require('./src/store');
 const youtube = require('./src/youtube');
 const tiktok = require('./src/tiktok');
 const ai = require('./src/ai');
+const { analyzeLocal } = require('./src/insights');
 const { TelegramBot, mdToTg } = require('./src/telegram');
 
 // Своя папка для данных: %APPDATA%\\MonetizationStudio
@@ -393,7 +394,8 @@ function sampleRetention(ret) {
   }));
 }
 
-async function analyze({ days = 30, accountIds = [], question = '', weakCount = 5 }) {
+// mode: 'auto' (Claude по API, если есть ключ, иначе бесплатно), 'local', 'claude', 'prompt' (только текст запроса)
+async function analyze({ days = 30, accountIds = [], question = '', weakCount = 5, mode = 'auto' }) {
   const key = store.secret('anthropicKey');
   const since = Date.now() - days * 864e5;
   const accs = store.data.accounts.filter((a) => !accountIds.length || accountIds.includes(a.id));
@@ -452,9 +454,12 @@ async function analyze({ days = 30, accountIds = [], question = '', weakCount = 
     best: best.map(row),
     all: all.length <= 60 ? all.map(row).map(({ retention, traffic, ...r }) => r) : undefined,
   };
-  const text = await ai.ask(key, ai.analysisPrompt(payload, question));
+  const prompt = ai.analysisPrompt(payload, question);
+  if (mode === 'prompt') return { prompt: ai.SYSTEM + '\n\n' + prompt };
+  const useClaude = mode === 'claude' || (mode === 'auto' && key);
+  const text = useClaude ? await ai.ask(key, prompt) : analyzeLocal({ days, rows: all.map(row), weakest: weakest.map(row), best: best.map(row), accounts: accs });
   const entry = {
-    id: store.id(), createdAt: Date.now(), days, question,
+    id: store.id(), createdAt: Date.now(), days, question, source: useClaude ? 'claude-api' : 'local',
     accounts: accs.map((a) => a.name), text,
     weakest: weakest.map((x) => ({ accountId: x.acc.id, id: x.v.id, title: x.v.title, views: x.v.views, platform: x.acc.platform, account: x.acc.name, url: x.v.url })),
   };
@@ -573,6 +578,16 @@ function registerIpc() {
   handle('stats:detail', (accountId, videoId) => videoDetail(accountId, videoId));
 
   handle('ai:analyze', (opts) => analyze(opts));
+  handle('analysis:import', ({ text, days, question, accountIds = [] }) => {
+    if (!text || !text.trim()) throw new Error('Вставь ответ Claude');
+    const names = store.data.accounts.filter((a) => !accountIds.length || accountIds.includes(a.id)).map((a) => a.name);
+    const last = store.data.analyses.find((a) => a.days === days && a.weakest);
+    const entry = { id: store.id(), createdAt: Date.now(), days, question, source: 'claude-chat', accounts: names, text: text.trim(), weakest: last?.weakest || [] };
+    store.data.analyses.unshift(entry);
+    store.data.analyses = store.data.analyses.slice(0, 50);
+    store.save(); pushState();
+    return entry;
+  });
   handle('ai:titles', (opts) => ai.ask(store.secret('anthropicKey'), ai.titlesPrompt(opts), { effort: 'medium', maxTokens: 4000 }));
   handle('ai:ask', (q) => ai.ask(store.secret('anthropicKey'), q, { effort: 'medium', maxTokens: 8000 }));
   handle('analysis:delete', (id) => { store.data.analyses = store.data.analyses.filter((a) => a.id !== id); store.save(); pushState(); });
