@@ -21,6 +21,7 @@ let tray;
 let tg;
 let quitting = false;
 const busy = new Set(); // идущие загрузки videoId:accountId
+const aborts = new Map(); // videoId:accountId -> AbortController
 
 const PLATFORM = { youtube, tiktok };
 const ICON = path.join(__dirname, 'assets', 'icon.png');
@@ -98,6 +99,8 @@ async function runTarget(video, result) {
     return;
   }
   busy.add(key);
+  const ctrl = new AbortController();
+  aborts.set(key, ctrl);
   Object.assign(result, { status: 'uploading', error: '', progress: 0 });
   video.status = videoStatus(video); store.save(); pushState();
   let lastPct = -1;
@@ -105,12 +108,26 @@ async function runTarget(video, result) {
     const scheduleAt = acc.platform === 'youtube' && video.scheduleAt && new Date(video.scheduleAt) > new Date() ? video.scheduleAt : null;
     const out = await PLATFORM[acc.platform].upload(store, acc, video, {
       scheduleAt,
+      signal: ctrl.signal,
       onProgress: (sent, total) => {
         const pct = Math.floor((sent / total) * 100);
         if (pct !== lastPct) { lastPct = pct; result.progress = pct; send('progress', { videoId: video.id, accountId: acc.id, pct }); }
       },
     });
-    Object.assign(result, out, { progress: 100, doneAt: Date.now() });
+    if (ctrl.signal.aborted && out.remoteId) {
+      // отмена пришла в последний момент — видео уже на площадке
+      Object.assign(result, out, { progress: 100, doneAt: Date.now() });
+      throw Object.assign(new Error('Видео успело загрузиться до отмены — удали его на сайте, если оно не нужно'), { late: true });
+    }
+    Object.assign(result, out, { progress: 100, doneAt: Date.now(), scheduledFor: scheduleAt || null });
+    // время поменяли, пока шла загрузка — применяем новое
+    if (out.status === 'scheduled' && video.scheduleAt !== scheduleAt) {
+      try {
+        await youtube.setSchedule(store, acc, out.remoteId, new Date(video.scheduleAt) > new Date() ? video.scheduleAt : null, video.youtube?.madeForKids);
+        result.scheduledFor = video.scheduleAt;
+        if (!(new Date(video.scheduleAt) > new Date())) out.status = result.status = 'published';
+      } catch (_) { /* останется старое время */ }
+    }
     const label = { published: 'опубликовано', scheduled: 'запланировано на YouTube', inbox: 'отправлено во «Входящие» TikTok', processing: 'обрабатывается' }[out.status] || out.status;
     notify(`✅ ${acc.name}`, `«${video.title}» — ${label}`);
     if (out.status === 'published' || out.status === 'inbox') result.tgNotified = true;
@@ -119,11 +136,19 @@ async function runTarget(video, result) {
       buttons: out.url ? [[{ text: 'Открыть видео', url: out.url }]] : undefined,
     });
   } catch (e) {
+    if (e.cancelled || (ctrl.signal.aborted && !e.late)) {
+      // отменено — убираем цель из очереди
+      video.results = (video.results || []).filter((r) => r !== result);
+      if (!video.results.length) video.scheduleAt = null;
+      return;
+    }
+    if (e.late) { notify('Отмена не успела', e.message); return; }
     Object.assign(result, { status: 'error', error: e.message });
     notify(`❌ Ошибка: ${acc.name}`, `«${video.title}»: ${e.message}`);
     tg?.notify('errors', { text: `❌ <b>Не удалось выложить</b> «${h(video.title)}»\n${pfIcon(acc.platform)} · ${h(acc.name)}\n${h(e.message)}`, buttons: [[{ text: '🔁 Повторить', data: `retry:${video.id}:${acc.id}` }]] });
   } finally {
     busy.delete(key);
+    aborts.delete(key);
     video.status = videoStatus(video);
     store.save(); pushState();
   }
@@ -564,6 +589,42 @@ function registerIpc() {
     const r = v?.results?.find((x) => x.accountId === accountId);
     if (!r) throw new Error('Нечего повторять');
     runTarget(v, r);
+  });
+  handle('video:cancelUpload', (id, accountId) => {
+    const v = store.data.videos.find((x) => x.id === id);
+    if (!v) return;
+    for (const r of v.results || []) {
+      if (accountId && r.accountId !== accountId) continue;
+      const c = aborts.get(id + ':' + r.accountId);
+      if (c) c.abort();
+    }
+    // ещё не начавшиеся (в очереди) убираем сразу
+    v.results = (v.results || []).filter((r) => !(['pending', 'queued'].includes(r.status) && (!accountId || r.accountId === accountId)));
+    if (!v.results.length) v.scheduleAt = null;
+    v.status = videoStatus(v);
+    store.save(); pushState();
+  });
+  handle('video:reschedule', async (id, iso) => {
+    const v = store.data.videos.find((x) => x.id === id);
+    if (!v) throw new Error('Видео не найдено');
+    if (iso && new Date(iso) <= new Date()) throw new Error('Это время уже прошло');
+    v.scheduleAt = iso || new Date().toISOString();
+    const errors = [];
+    for (const r of v.results || []) {
+      const a = store.account(r.accountId);
+      if (r.status === 'scheduled' && a?.platform === 'youtube' && r.remoteId) {
+        try {
+          await youtube.setSchedule(store, a, r.remoteId, iso, v.youtube?.madeForKids);
+          r.scheduledFor = iso;
+          if (!iso) { r.status = 'published'; r.tgNotified = true; tg?.notify('published', { text: `🎬 <b>Вышло:</b> ${h(v.title)}\n${pfIcon('youtube')} · ${h(a.name)}`, buttons: r.url ? [[{ text: 'Открыть видео', url: r.url }]] : undefined }); }
+        } catch (e) { errors.push(`${a.name}: ${e.message}`); }
+      }
+    }
+    v.status = videoStatus(v);
+    store.save(); pushState();
+    tick();
+    if (errors.length) throw new Error('Не удалось поменять время: ' + errors.join('; '));
+    return true;
   });
   handle('video:cancelSchedule', (id) => {
     const v = store.data.videos.find((x) => x.id === id);

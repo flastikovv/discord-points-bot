@@ -102,7 +102,7 @@ async function get(store, acc, url) {
 }
 
 // Загрузка. scheduleAt — ISO-время; YouTube сам опубликует видео, компьютер может быть выключен.
-async function upload(store, acc, video, { scheduleAt, onProgress }) {
+async function upload(store, acc, video, { scheduleAt, onProgress, signal }) {
   const t = await token(store, acc);
   const size = fs.statSync(video.filePath).size;
   const yt = video.youtube || {};
@@ -130,6 +130,7 @@ async function upload(store, acc, video, { scheduleAt, onProgress }) {
       'X-Upload-Content-Type': 'video/*',
     },
     body: JSON.stringify(meta),
+    signal,
   });
   if (!init.ok) {
     const txt = await init.text();
@@ -146,6 +147,7 @@ async function upload(store, acc, video, { scheduleAt, onProgress }) {
     start: 0,
     end: size - 1,
     onProgress,
+    signal,
   });
   const isShort = (video.durationSec || 0) > 0 && video.durationSec <= 180;
   return {
@@ -280,4 +282,17 @@ async function fetchMonetization(store, acc) {
   return out;
 }
 
-module.exports = { connect, upload, fetchStats, fetchDetail, fetchMonetization };
+// Сменить время публикации уже загруженного видео (iso) или открыть его сразу (iso = null)
+async function setSchedule(store, acc, videoId, iso, madeForKids = false) {
+  const t = await token(store, acc);
+  const status = iso
+    ? { privacyStatus: 'private', publishAt: new Date(iso).toISOString(), selfDeclaredMadeForKids: !!madeForKids }
+    : { privacyStatus: 'public', selfDeclaredMadeForKids: !!madeForKids };
+  await jsonFetch(`${API}/videos?part=status`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ id: videoId, status }),
+  });
+}
+
+module.exports = { connect, upload, fetchStats, fetchDetail, fetchMonetization, setSchedule };

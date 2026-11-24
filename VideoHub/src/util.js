@@ -21,8 +21,9 @@ async function jsonFetch(url, opts = {}) {
 }
 
 // PUT/POST куска файла с отслеживанием прогресса
-function sendFile(url, { method = 'PUT', headers = {}, file, start = 0, end, onProgress }) {
+function sendFile(url, { method = 'PUT', headers = {}, file, start = 0, end, onProgress, signal }) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(cancelled()); return; }
     const u = new URL(url);
     const length = end - start + 1;
     const req = https.request({
@@ -40,9 +41,10 @@ function sendFile(url, { method = 'PUT', headers = {}, file, start = 0, end, onP
         else reject(new Error(`Загрузка: HTTP ${res.statusCode} ${data?.error?.message || body.slice(0, 300)}`));
       });
     });
-    req.on('error', reject);
-    let sent = 0;
     const stream = fs.createReadStream(file, { start, end });
+    req.on('error', (e) => reject(signal?.aborted ? cancelled() : e));
+    signal?.addEventListener('abort', () => { stream.destroy(); req.destroy(); }, { once: true });
+    let sent = 0;
     stream.on('data', (chunk) => {
       sent += chunk.length;
       if (onProgress) onProgress(sent, length);
@@ -90,5 +92,6 @@ function oauthLoopback({ port = 0, host = '127.0.0.1', state }) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const cancelled = () => Object.assign(new Error('Загрузка отменена'), { cancelled: true });
 
-module.exports = { jsonFetch, sendFile, pkce, oauthLoopback, sleep, b64url, DONE_PAGE };
+module.exports = { cancelled, jsonFetch, sendFile, pkce, oauthLoopback, sleep, b64url, DONE_PAGE };

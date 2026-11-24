@@ -144,7 +144,7 @@ function chunks(size) {
 }
 
 // mode: 'direct' — опубликовать сразу; 'draft' — отправить во «Входящие» TikTok, дальше выложить с телефона
-async function upload(store, acc, video, { onProgress }) {
+async function upload(store, acc, video, { onProgress, signal }) {
   const size = fs.statSync(video.filePath).size;
   const { chunkSize, count } = chunks(size);
   const tt = video.tiktok || {};
@@ -179,6 +179,7 @@ async function upload(store, acc, video, { onProgress }) {
       headers: { 'Content-Type': 'video/mp4', 'Content-Range': `bytes ${start}-${end}/${size}` },
       file: video.filePath, start, end,
       onProgress: (sent) => onProgress?.(start + sent, size),
+      signal,
     });
   }
   // Ждём обработку

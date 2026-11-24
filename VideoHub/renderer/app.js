@@ -441,7 +441,7 @@ function pagePublished() {
           const p = ui.progress[v.id + ':' + r.accountId] ?? r.progress ?? 0;
           return `<div class="trow">${pf(r.platform || a?.platform)}<span class="name">${esc(a?.name || 'удалённый аккаунт')}</span>
             ${status(r.status)}
-            ${r.status === 'uploading' ? `<div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span>` : ''}
+            ${r.status === 'uploading' ? `<div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span><button class="btn sm danger" data-cancelup="${v.id}|${r.accountId}">${I.x}Отменить</button>` : ''}
             ${r.status === 'error' ? `<span class="err">${esc(r.error)}</span><button class="btn sm" data-retry="${v.id}|${r.accountId}">${I.refresh}Повторить</button>` : '<span class="grow"></span>'}
             ${r.private && r.status === 'published' ? '<span class="small dim">приватно</span>' : ''}
             ${r.url ? `<button class="btn sm ghost" data-open="${esc(r.url)}">${I.link}Открыть</button>` : ''}
@@ -449,7 +449,8 @@ function pagePublished() {
         }).join('')}</div>
       </div>
       <div class="row" style="gap:4px">
-        ${(v.results || []).some((r) => r.status === 'queued') ? `<button class="btn sm" data-unsched="${v.id}">Отменить расписание TikTok</button>` : ''}
+        ${v.scheduleAt && (v.results || []).some((r) => ['queued', 'scheduled', 'uploading', 'pending'].includes(r.status)) && new Date(v.scheduleAt) > new Date() ? `<button class="btn sm violet" data-resched="${v.id}">${I.clock}Изменить время</button>` : ''}
+        ${(v.results || []).some((r) => r.status === 'queued') ? `<button class="btn sm" data-unsched="${v.id}">Отменить TikTok</button>` : ''}
         <button class="icon-btn" title="Показать файл" data-showfile="${esc(v.filePath || '')}">${I.folder}</button>
         <button class="icon-btn" title="Удалить из списка" data-del="${v.id}">${I.trash}</button>
       </div>
@@ -721,6 +722,39 @@ function pageSettings() {
   return { html };
 }
 
+function rescheduleDialog(id) {
+  const v = S.videos.find((x) => x.id === id);
+  const root = $('#modalRoot');
+  const ytDone = (v.results || []).some((r) => r.status === 'scheduled');
+  root.innerHTML = `<div class="overlay"><div class="modal narrow">
+    <header><h2>Изменить время</h2><span class="grow"></span><button class="icon-btn" data-close>${I.x}</button></header>
+    <div class="mbody">
+      <div style="margin-bottom:12px"><b>${esc(v.title || 'Без названия')}</b><div class="small muted">Сейчас: ${dt(v.scheduleAt)}</div></div>
+      <label class="field"><span>Новое время</span><input type="datetime-local" class="input" id="when3" value="${toLocalInput(v.scheduleAt)}"></label>
+      <div class="row wrap" style="gap:6px;margin-bottom:12px">${[['+1 час', 1], ['+3 часа', 3], ['Завтра 12:00', 'tm12'], ['Завтра 18:00', 'tm18']].map(([t, k]) => `<button class="btn sm" data-q="${k}">${t}</button>`).join('')}</div>
+      ${bestSlotsHint()}
+      <div class="hint">${ytDone ? 'На YouTube дата поменяется сразу, на сайте.' : 'Новое время применится, как только видео загрузится.'}</div>
+    </div>
+    <footer><button class="btn green" data-now>${I.send}Выложить сейчас</button><span class="grow"></span><button class="btn" data-close>Отмена</button><button class="btn violet" data-ok>Сохранить время</button></footer>
+  </div></div>`;
+  const close = () => { root.innerHTML = ''; };
+  root.querySelectorAll('[data-close]').forEach((b) => { b.onclick = close; });
+  root.querySelectorAll('[data-q]').forEach((b) => {
+    b.onclick = () => {
+      const k = b.dataset.q; const d = new Date(k.startsWith('tm') ? Date.now() : v.scheduleAt);
+      if (k.startsWith('tm')) { d.setDate(d.getDate() + 1); d.setHours(+k.slice(2), 0, 0, 0); } else d.setHours(d.getHours() + +k);
+      $('#when3').value = toLocalInput(d);
+    };
+  });
+  root.querySelector('[data-ok]').onclick = async () => {
+    const iso = new Date($('#when3').value).toISOString();
+    try { await call('video:reschedule', id, iso); close(); toast(`Новое время: ${dt(iso)}`); } catch (_) { /* */ }
+  };
+  root.querySelector('[data-now]').onclick = async () => {
+    try { await call('video:reschedule', id, null); close(); toast('Выкладываю сейчас'); } catch (_) { /* */ }
+  };
+}
+
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch (_) {
     const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
@@ -986,7 +1020,7 @@ function pageTelegram() {
 
 // ---------- События ----------
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove],[data-aprompt],[data-apaste]');
+  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove],[data-aprompt],[data-apaste],[data-cancelup],[data-resched]');
   if (!t || t.closest('#modalRoot .modal') && !t.dataset.open) return;
   const d = t.dataset;
   if (d.open) { e.preventDefault(); call('shell:open', d.open); return; }
@@ -1055,6 +1089,14 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if ('apaste' in d) return pasteAnswerDialog();
+  if (d.cancelup) {
+    const [v, a] = d.cancelup.split('|');
+    t.disabled = true;
+    await call('video:cancelUpload', v, a);
+    toast('Загрузка отменена — видео вернулось в черновики, если больше никуда не выкладывается', 'info');
+    return;
+  }
+  if (d.resched) return rescheduleDialog(d.resched);
   if (d.asel) { ui.analysisSel = d.asel; return render(); }
   if (d.adel) { if (confirm('Удалить этот анализ?')) await call('analysis:delete', d.adel); return; }
   if (d.acopy) { const a = S.analyses.find((x) => x.id === d.acopy); navigator.clipboard.writeText(a.text); toast('Скопировано'); return; }
