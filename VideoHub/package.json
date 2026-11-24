@@ -1,0 +1,56 @@
+{
+  "name": "videohub",
+  "version": "1.0.0",
+  "description": "Загрузка видео на YouTube и TikTok, статистика и ИИ-анализ",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64 && node build/patch-exe.js && cd build && makensis -DVERSION=1.0.0 installer.nsi"
+  },
+  "author": "VideoHub",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "png2icons": "^2.0.1",
+    "resedit": "^2.0.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.13.0"
+  },
+  "productName": "VideoHub",
+  "build": {
+    "appId": "com.videohub.app",
+    "productName": "VideoHub",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**",
+      "renderer/**",
+      "assets/**",
+      "node_modules/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "VideoHub"
+    }
+  }
+}
