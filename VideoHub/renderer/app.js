@@ -11,6 +11,8 @@ const I = {
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   money: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/></svg>',
   tg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 4.5 2.8 11.7c-.9.4-.9 1.6 0 1.9l4.7 1.5 1.8 5.6c.2.7 1.1.9 1.6.4l2.6-2.5 4.9 3.6c.6.4 1.4.1 1.6-.6L22.9 5.8c.2-.9-.6-1.6-1.4-1.3z"/><path d="m7.5 15.1 9.8-6.6"/></svg>',
+  scissors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>',
+  bot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>',
@@ -92,6 +94,8 @@ const ui = {
   analysisOpts: { days: 30, accountIds: [], question: '', weakCount: 5 },
   progress: {},
   refreshing: false,
+  clip: { status: 'idle', port: null, error: '', exports: [], outDir: '' },
+  asstBusy: false,
   statsView: 'videos',
   tg: { status: 'off', botName: '', error: '' },
 };
@@ -101,6 +105,8 @@ const PAGES = [
   { id: 'videos', title: 'Видео', sub: 'Добавь ролики, впиши название и описание, выбери, куда выложить', icon: I.video },
   { id: 'published', title: 'Выложенные', sub: 'Что загружается, что запланировано и что уже вышло', icon: I.send },
   { id: 'stats', title: 'Статистика', sub: 'Цифры по каждому видео, лучшее время публикации, сравнение RU и EN', icon: I.chart },
+  { id: 'clips', title: 'Нарезка моментов', sub: 'ClipApp внутри студии: режь стримы и видео на вертикальные клипы', icon: I.scissors },
+  { id: 'assistant', title: 'Помощник', sub: 'ИИ, который знает твои каналы и статистику: идеи, названия, переводы, разборы', icon: I.bot },
   { id: 'analysis', title: 'Анализ', sub: 'Разбор статистики: что заходит, что просело и что улучшить', icon: I.brain },
   { id: 'money', title: 'Монетизация', sub: 'Сколько осталось до партнёрки YouTube и монетизации TikTok', icon: I.money },
   { id: 'telegram', title: 'Telegram', sub: 'Уведомления и управление с телефона через своего бота', icon: I.tg },
@@ -129,10 +135,12 @@ function render() {
   $('#pageSub').textContent = p.sub;
   const c = $('#content');
   const scroll = c.scrollTop;
-  const fn = { videos: pageVideos, published: pagePublished, stats: pageStats, analysis: pageAnalysis, money: pageMoney, telegram: pageTelegram, settings: pageSettings }[p.id];
+  const fn = { videos: pageVideos, published: pagePublished, stats: pageStats, analysis: pageAnalysis, clips: pageClips, assistant: pageAssistant, money: pageMoney, telegram: pageTelegram, settings: pageSettings }[p.id];
   const { html, actions = '' } = fn();
   $('#pageActions').innerHTML = actions;
   c.innerHTML = html;
+  document.querySelector('main').classList.toggle('clips-mode', p.id === 'clips');
+  $('#clipWrap').hidden = p.id !== 'clips' || !ui.clip.port;
   c.scrollTop = scroll;
   afterRender();
 }
@@ -250,7 +258,7 @@ function openEditor(id, preset = {}) {
             <input class="input" id="tags" value="${esc(tagsStr)}" placeholder="#истории #shorts #страшилки"></label>
           <div class="ai-box">
             <div class="row"><b>${I.spark.replace('<svg', '<svg width="16" height="16" style="vertical-align:-3px;color:var(--green)"')} Помощь ИИ</b><span class="grow"></span>
-              <button class="btn sm violet" id="aiBtn" ${aiBusy ? 'disabled' : ''}>${aiBusy ? '<span class="spinner"></span>Думаю…' : (S.settings.hasAnthropicKey ? 'Идеи названий, описание, хук' : 'Скопировать запрос для Claude')}</button></div>
+              <button class="btn sm violet" id="aiBtn" ${aiBusy ? 'disabled' : ''}>${aiBusy ? '<span class="spinner"></span>Думаю…' : (hasAI() ? 'Идеи названий, описание, хук' : 'Скопировать запрос для Claude')}</button></div>
             ${aiText ? `<div class="md small" style="margin-top:10px">${md(aiText)}</div>` : '<div class="hint">Claude предложит варианты названий, описание, хэштеги и идею для первых секунд.</div>'}
           </div>
           <div class="subcard">
@@ -359,7 +367,7 @@ function openEditor(id, preset = {}) {
     };
     $('#aiBtn').onclick = async () => {
       collect();
-      if (!S.settings.hasAnthropicKey) {
+      if (!hasAI()) {
         const l = v.lang === 'en' ? 'английском' : 'русском';
         const prompt = `Я выкладываю ${v.kind === 'clips' ? 'нарезку ютубера/стримера' : 'видео-историю'} в YouTube Shorts и TikTok.\nТекущее название: «${v.title || '-'}»\nОписание: «${v.description || '-'}»\n\nПредложи на ${l} языке:\n1. 6 вариантов цепляющего названия (до 70 символов, без обманного кликбейта).\n2. Короткое описание (2–3 предложения).\n3. 8–12 хэштегов.\n4. Идею для первых 2 секунд видео, чтобы зрители не свайпали.\nОтвет — коротко, списками.`;
         await copyText(prompt);
@@ -513,7 +521,7 @@ function statsDetail(a, v) {
     <div class="row" style="align-items:flex-start">
       ${v.thumb ? `<img src="${esc(v.thumb)}" style="width:110px;border-radius:8px">` : ''}
       <div class="grow"><b>${esc(v.title)}</b><div class="small muted">${dt(v.publishedAt)} · ${dur(v.duration)}</div>
-        ${v.url ? `<button class="btn sm ghost" style="margin-top:6px;padding-left:0" data-open="${esc(v.url)}">${I.link}Открыть видео</button>` : ''}</div>
+        <div class="row" style="gap:6px;margin-top:6px">${v.url ? `<button class="btn sm ghost" style="padding-left:0" data-open="${esc(v.url)}">${I.link}Открыть видео</button>` : ''}<button class="btn sm violet" data-askvid="${a.id}|${v.id}">${I.bot}Спросить помощника</button></div></div>
     </div>
     <div class="grid tiles" style="grid-template-columns:repeat(3,1fr);margin-top:14px">
       <div class="tile accent"><div class="k">Просмотры</div><div class="v">${fmt(v.views)}</div></div>
@@ -541,7 +549,7 @@ function statsDetail(a, v) {
 function pageStats() {
   if (!S.accounts.length) return { html: `<div class="empty">${I.chart}<h3>Нет аккаунтов</h3><div>Добавь каналы в «Настройках», и здесь появится статистика.</div></div>` };
   if (!ui.statsAcc || !acc(ui.statsAcc)) ui.statsAcc = S.accounts[0].id;
-  const viewSeg = `<div class="seg">${[['videos', 'По видео'], ['time', 'Лучшее время'], ['pairs', 'RU ↔ EN']].map(([k, t]) => `<button data-sview="${k}" class="${ui.statsView === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  const viewSeg = `<div class="seg">${[['videos', 'По видео'], ['time', 'Время'], ['pairs', 'RU↔EN']].map(([k, t]) => `<button data-sview="${k}" class="${ui.statsView === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   if (ui.statsView === 'time') return { actions: viewSeg, html: statsBestTime() };
   if (ui.statsView === 'pairs') return { actions: viewSeg, html: statsPairs() };
   const a = acc(ui.statsAcc);
@@ -606,7 +614,7 @@ function pageAnalysis() {
         <label class="field"><span>Свой вопрос (необязательно)</span>
           <textarea class="input" id="aq" rows="3" placeholder="Например: что добавить в видео, чтобы досматривали до конца? Какое время публикации лучше?">${esc(o.question)}</textarea></label>
         <button class="btn primary" style="width:100%;justify-content:center" data-arun ${ui.analysisRunning ? 'disabled' : ''}>${ui.analysisRunning ? '<span class="spinner"></span>Анализирую…' : I.brain + 'Запустить анализ'}</button>
-        <div class="hint">${S.settings.hasAnthropicKey ? 'Разбор сделает Claude по твоему ключу API.' : 'Бесплатно, прямо в программе: найдёт видео, которые набрали меньше обычного, и объяснит по цифрам, почему.'}</div>
+        <div class="hint">${S.settings.hasGeminiKey ? 'Разбор сделает ИИ Gemini (бесплатно) по твоей статистике.' : S.settings.hasAnthropicKey ? 'Разбор сделает Claude по твоему ключу API.' : 'Бесплатно, прямо в программе: найдёт видео, которые набрали меньше обычного, и объяснит по цифрам, почему.'}</div>
         <div class="section-title" style="margin-top:16px">Умный разбор через чат Claude</div>
         <div class="row" style="gap:8px">
           <button class="btn sm grow" style="justify-content:center" data-aprompt ${ui.analysisRunning ? 'disabled' : ''}>${I.copy}1. Скопировать</button>
@@ -620,16 +628,121 @@ function pageAnalysis() {
       ${ui.analysisRunning ? `<div class="card loading-card" style="margin-bottom:16px"><span class="spinner"></span><div><b>Собираю статистику и думаю…</b><div class="small muted">Обычно это занимает 30–90 секунд.</div></div></div>` : ''}
       ${cur ? `<div class="card">
         <div class="row"><h3 style="margin:0">Разбор за ${cur.days} дн</h3><span class="small muted">${dt(cur.createdAt)} · ${esc(cur.accounts.join(', '))}</span><span class="badge ${cur.source === 'local' ? '' : 'en'}">${cur.source === 'local' ? 'встроенный анализ' : 'Claude'}</span><span class="grow"></span>
-          <button class="icon-btn" title="Копировать текст" data-acopy="${cur.id}">${I.copy}</button><button class="icon-btn" title="Удалить" data-adel="${cur.id}">${I.trash}</button></div>
+          <button class="btn sm violet" data-askan="${cur.id}">${I.bot}План с помощником</button><button class="icon-btn" title="Копировать текст" data-acopy="${cur.id}">${I.copy}</button><button class="icon-btn" title="Удалить" data-adel="${cur.id}">${I.trash}</button></div>
         ${cur.question ? `<div class="info-box" style="margin-top:12px">Вопрос: ${esc(cur.question)}</div>` : ''}
         ${cur.weakest?.length ? `<div class="section-title">Меньше всего просмотров</div>${cur.weakest.map((w) => `<div class="weak">${pf(w.platform)}<span class="grow">${esc(w.title)}<span class="small dim"> · ${esc(w.account)}</span></span><b class="down">${fmt(w.views)}</b>
-          ${w.url ? `<button class="icon-btn" data-open="${esc(w.url)}">${I.link}</button>` : ''}<button class="icon-btn" title="Статистика" data-gostat="${w.accountId}|${w.id}">${I.chart}</button></div>`).join('')}` : ''}
+          ${w.url ? `<button class="icon-btn" data-open="${esc(w.url)}">${I.link}</button>` : ''}<button class="icon-btn" title="Статистика" data-gostat="${w.accountId}|${w.id}">${I.chart}</button><button class="icon-btn" title="Спросить помощника" data-askvid="${w.accountId}|${w.id}">${I.bot}</button></div>`).join('')}` : ''}
         <div class="md" style="margin-top:10px">${md(cur.text)}</div>
       </div>` : !ui.analysisRunning ? `<div class="empty">${I.brain}<h3>Анализов пока нет</h3><div>Выбери период слева и нажми «Запустить анализ».</div></div>` : ''}
     </div>
   </div>`;
   return { html };
 }
+
+const hasAI = () => !!(S.settings.hasGeminiKey || S.settings.hasAnthropicKey);
+
+// ---------- Страница «Нарезка моментов» ----------
+async function clipEnsure(restart) {
+  if (ui.clip.status === 'starting') return;
+  ui.clip.status = 'starting'; ui.clip.error = ''; render();
+  const r = await window.api.call(restart ? 'clip:restart' : 'clip:start').catch((e) => ({ ok: false, error: e.message }));
+  if (r.ok) {
+    ui.clip.status = 'ready';
+    if (ui.clip.port !== r.port || restart) {
+      ui.clip.port = r.port;
+      $('#clipWrap').innerHTML = `<iframe id="clipFrame" src="http://127.0.0.1:${r.port}/" title="Нарезка моментов"></iframe>`;
+    }
+  } else {
+    ui.clip.status = r.notFound ? 'notfound' : 'error';
+    ui.clip.error = r.error || '';
+  }
+  render();
+  clipScan();
+}
+
+async function clipScan() {
+  try {
+    const r = await window.api.call('clip:scan');
+    const changed = JSON.stringify(r.exports) !== JSON.stringify(ui.clip.exports);
+    ui.clip.exports = r.exports; ui.clip.outDir = r.outDir;
+    if (changed && ui.page === 'clips') render();
+  } catch (_) { /* */ }
+}
+setInterval(() => { if (ui.page === 'clips' && ui.clip.status === 'ready') clipScan(); }, 8000);
+
+function pageClips() {
+  if (ui.clip.status === 'idle') setTimeout(() => clipEnsure(false), 0);
+  const c = ui.clip;
+  const actions = c.status === 'ready' ? `<button class="btn" data-cliprestart>${I.refresh}Перезапустить</button>` : '';
+  if (c.status === 'idle' || c.status === 'starting') {
+    return { actions, html: `<div class="card loading-card"><span class="spinner"></span><div><b>Запускаю ClipApp…</b><div class="small muted">Первый запуск может занять до минуты.</div></div></div>` };
+  }
+  if (c.status === 'notfound') {
+    return { html: `<div class="card" style="max-width:640px"><h3>${I.scissors.replace('<svg', '<svg width="18" height="18"')} ClipApp не найден</h3>
+      <p class="muted">Вкладка запускает уже установленный ClipApp. Обычно он стоит в <b>E:\\ClipApp</b>. Если он в другом месте — укажи папку.</p>
+      <div class="row"><button class="btn primary" data-clipdir>${I.folder}Указать папку ClipApp</button><button class="btn" data-clipretry>${I.refresh}Проверить ещё раз</button></div></div>` };
+  }
+  if (c.status === 'error') {
+    return { html: `<div class="card" style="max-width:640px"><h3>Не удалось запустить ClipApp</h3><div class="note-box">${esc(c.error)}</div>
+      <div class="row"><button class="btn primary" data-clipretry>${I.refresh}Попробовать ещё раз</button><button class="btn" data-clipdir>${I.folder}Другая папка</button></div></div>` };
+  }
+  const fresh = c.exports.filter((x) => !x.imported);
+  const strip = fresh.length
+    ? fresh.slice(0, 3).map((x) => `<div class="clip-ready"><span class="badge en">готово</span><b class="grow">${esc(x.name)}</b><span class="small muted">${x.count} клип(ов)</span>
+        <button class="btn sm green" data-clipimport="${esc(x.folder)}">${I.plus}В черновики</button></div>`).join('')
+    : `<div class="small muted">Сделай экспорт в ClipApp ниже — готовые клипы появятся здесь, и их можно одной кнопкой отправить в «Видео» с названиями и хэштегами.${c.outDir ? '' : ' Не забудь выбрать в ClipApp «Папку экспорта».'}</div>`;
+  return { actions, html: `<div class="clip-strip">${strip}</div>` };
+}
+
+// ---------- Страница «Помощник» ----------
+const ASST_QUICK = [
+  'Придумай 7 тем для историй на эту неделю — с названиями на RU и EN и хуком на первые 2 секунды',
+  'Почему последнее видео набрало мало? Что поменять?',
+  'Какие мои видео зашли лучше всего и что у них общего?',
+  'Переведи названия моих черновиков на английский так, чтобы цепляли',
+  'В какое время мне лучше выкладывать и сколько видео в день?',
+  'Что сделать, чтобы быстрее выйти на монетизацию?',
+];
+
+function pageAssistant() {
+  const conv = S.assistant || { messages: [] };
+  if (!S.settings.hasGeminiKey) {
+    return { html: `<div class="card" style="max-width:680px"><h3>${I.bot.replace('<svg', '<svg width="18" height="18" style="color:var(--green)"')} Помощнику нужен бесплатный ключ Gemini</h3>
+      <ol class="steps"><li>Открой <a href="#" data-open="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a> и войди своим Google-аккаунтом.</li>
+      <li>Нажми <b>«Create API key»</b> (Создать ключ) и скопируй его.</li>
+      <li>Вставь сюда и нажми «Сохранить». Карта не нужна, это бесплатно.</li></ol>
+      <div class="keyline"><input class="input" type="password" id="gemKey2" placeholder="AIza…"><button class="btn primary" data-gemsave2>Сохранить</button></div></div>` };
+  }
+  const msgs = conv.messages || [];
+  const list = msgs.length ? msgs.map((m) => `<div class="msg ${m.role}"><div class="bubble ${m.role === 'assistant' ? 'md' : ''}">${m.role === 'assistant' ? md(m.text) : esc(m.text).replace(/\n/g, '<br>')}</div>
+      ${m.role === 'assistant' ? `<button class="icon-btn" title="Копировать" data-msgcopy="${msgs.indexOf(m)}">${I.copy}</button>` : ''}</div>`).join('')
+    : `<div class="asst-empty"><div class="muted" style="margin-bottom:12px">Я знаю твои каналы, видео и статистику. Спроси что угодно или выбери:</div>
+      <div class="quick">${ASST_QUICK.map((q, i) => `<button class="btn sm" data-quick="${i}">${esc(q)}</button>`).join('')}</div></div>`;
+  const busy = ui.asstBusy || conv.pending;
+  return {
+    actions: msgs.length ? `<button class="btn" data-asstclear>${I.trash}Новый разговор</button>` : '',
+    html: `<div class="chat">
+      <div class="chat-list" id="chatList">${list}${busy ? '<div class="msg assistant"><div class="bubble"><span class="spinner"></span> Думаю…</div></div>' : ''}</div>
+      <div class="chat-input"><textarea class="input" id="asstText" rows="2" placeholder="Например: придумай название для истории про заброшенный лагерь (Enter — отправить, Shift+Enter — новая строка)" ${busy ? 'disabled' : ''}></textarea>
+        <button class="btn primary" data-asstsend ${busy ? 'disabled' : ''}>${I.send}Отправить</button></div>
+      <div class="small dim">Помощник работает на Google Gemini (бесплатно). Он видит твою статистику и черновики, но ничего не выкладывает сам.</div>
+    </div>`,
+  };
+}
+
+async function asstSend(text) {
+  text = (text || '').trim();
+  if (!text || ui.asstBusy) return;
+  ui.asstBusy = true;
+  S.assistant = S.assistant || { messages: [] };
+  S.assistant.messages = [...(S.assistant.messages || []), { role: 'user', text }];
+  render(); scrollChat();
+  try { await call('assistant:send', text); } catch (_) { /* toast уже показан */ }
+  ui.asstBusy = false;
+  S = await window.api.call('state:get');
+  render(); scrollChat();
+}
+function scrollChat() { const l = $('#chatList'); if (l) l.scrollTop = l.scrollHeight; }
 
 // ---------- Страница «Настройки» ----------
 function pageSettings() {
@@ -667,6 +780,10 @@ function pageSettings() {
           <label class="field"><span>Client Secret</span>${secret('tiktokClientSecret', s.hasTiktokSecret, '')}</label>
           <label class="field" style="margin:0"><span>Redirect URI (должен совпадать с указанным в TikTok)</span><input class="input" id="tiktokRedirectUri" value="${esc(s.tiktokRedirectUri)}"></label>
           <label class="check"><input type="checkbox" id="tiktokAudited" ${s.tiktokAudited ? 'checked' : ''}>TikTok одобрил приложение (можно публиковать открыто)</label>
+        </div>
+        <div class="subcard"><h4>${I.bot.replace('<svg', '<svg width="16" height="16" style="color:var(--green)"')} Google Gemini — бесплатный ИИ (помощник, анализ, названия)</h4>
+          <label class="field" style="margin:0"><span>Ключ Gemini — <a href="#" data-open="https://aistudio.google.com/apikey">получить бесплатно</a></span>${secret('geminiKey', s.hasGeminiKey, 'AIza…')}</label>
+          ${s.hasGeminiKey ? '<button class="btn sm" style="margin-top:10px" data-gemcheck>Проверить ключ</button>' : ''}
         </div>
         <div class="subcard" style="margin:0"><h4>${I.spark.replace('<svg', '<svg width="16" height="16" style="color:var(--green)"')} Claude (для анализа)</h4>
           <label class="field" style="margin:0"><span>API-ключ Anthropic (необязательно, платно — без него анализ работает бесплатно)</span>${secret('anthropicKey', s.hasAnthropicKey, 'sk-ant-…')}</label>
@@ -1020,7 +1137,7 @@ function pageTelegram() {
 
 // ---------- События ----------
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove],[data-aprompt],[data-apaste],[data-cancelup],[data-resched]');
+  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove],[data-aprompt],[data-apaste],[data-cancelup],[data-resched],[data-cliprestart],[data-clipdir],[data-clipretry],[data-clipimport],[data-gemsave2],[data-gemcheck],[data-asstsend],[data-asstclear],[data-quick],[data-msgcopy],[data-askvid],[data-askan]');
   if (!t || t.closest('#modalRoot .modal') && !t.dataset.open) return;
   const d = t.dataset;
   if (d.open) { e.preventDefault(); call('shell:open', d.open); return; }
@@ -1097,6 +1214,37 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (d.resched) return rescheduleDialog(d.resched);
+  if ('cliprestart' in d) return clipEnsure(true);
+  if ('clipretry' in d) { ui.clip.status = 'idle'; return clipEnsure(false); }
+  if ('clipdir' in d) { try { const r = await call('clip:pickDir'); if (r) { ui.clip.status = 'idle'; clipEnsure(false); } } catch (_) { /* */ } return; }
+  if (d.clipimport) {
+    const n = await call('clip:import', d.clipimport);
+    toast(`Добавлено в черновики: ${n}. Они уже отмечены на аккаунты с типом «Нарезки».`);
+    clipScan();
+    return;
+  }
+  if ('gemsave2' in d) { const k = $('#gemKey2').value.trim(); if (!k) return; await call('settings:save', { geminiKey: k }); toast('Ключ Gemini сохранён'); return; }
+  if ('gemcheck' in d) { t.disabled = true; try { const m = await call('gemini:check'); toast(`Gemini работает (модель ${m})`); } catch (_) { /* */ } t.disabled = false; return; }
+  if ('asstsend' in d) return asstSend($('#asstText').value);
+  if (d.quick !== undefined) return asstSend(ASST_QUICK[+d.quick]);
+  if (d.askvid) {
+    const [aid, vid] = d.askvid.split('|');
+    const a = acc(aid); const v = S.stats[aid]?.videos?.find((x) => x.id === vid);
+    if (!v) return;
+    const det = S.details[aid + ':' + vid];
+    const ret = det?.retention?.length ? ' Удержание (доля видео → доля зрителей): ' + [0.05, 0.25, 0.5, 0.75, 0.95].map((p) => { const r = det.retention.reduce((x, y) => (Math.abs(y[0] - p) < Math.abs(x[0] - p) ? y : x)); return `${Math.round(p * 100)}%→${Math.round(r[1] * 100)}%`; }).join(', ') + '.' : '';
+    go('assistant');
+    if (!S.settings.hasGeminiKey) return;
+    return asstSend(`Разбери моё видео «${v.title}» (${a?.platform === 'youtube' ? 'YouTube' : 'TikTok'}, «${a?.name}»): ${v.views} просмотров, ${v.likes} лайков, ${v.comments} комментариев${v.avgViewPct != null ? `, средний досмотр ${Math.round(v.avgViewPct)}%` : ''}, длина ${v.duration} с, вышло ${dt(v.publishedAt)}.${ret} Почему оно набрало столько, что конкретно поменять и какое название было бы сильнее?`);
+  }
+  if (d.askan) {
+    const an = S.analyses.find((x) => x.id === d.askan);
+    go('assistant');
+    if (!S.settings.hasGeminiKey || !an) return;
+    return asstSend('По последнему анализу составь мне конкретный план на следующую неделю: что снимать, какие хуки, какая длина, когда выкладывать. Анализ:\n' + an.text.slice(0, 4000));
+  }
+  if ('asstclear' in d) { await call('assistant:clear'); return; }
+  if (d.msgcopy !== undefined) { const m = S.assistant.messages[+d.msgcopy]; if (m) { await copyText(m.text); toast('Скопировано'); } return; }
   if (d.asel) { ui.analysisSel = d.asel; return render(); }
   if (d.adel) { if (confirm('Удалить этот анализ?')) await call('analysis:delete', d.adel); return; }
   if (d.acopy) { const a = S.analyses.find((x) => x.id === d.acopy); navigator.clipboard.writeText(a.text); toast('Скопировано'); return; }
@@ -1110,7 +1258,7 @@ document.addEventListener('click', async (e) => {
   if ('savekeys' in d) {
     const patch = {
       googleClientId: $('#googleClientId').value, tiktokClientKey: $('#tiktokClientKey').value, tiktokRedirectUri: $('#tiktokRedirectUri').value,
-      googleClientSecret: $('#googleClientSecret').value, tiktokClientSecret: $('#tiktokClientSecret').value, anthropicKey: $('#anthropicKey').value,
+      googleClientSecret: $('#googleClientSecret').value, tiktokClientSecret: $('#tiktokClientSecret').value, anthropicKey: $('#anthropicKey').value, geminiKey: $('#geminiKey').value,
     };
     await call('settings:save', patch);
     toast('Ключи сохранены');
@@ -1165,12 +1313,17 @@ window.api.on('state', (s) => {
   const a = document.activeElement;
   if (ui.page === 'settings' && a && a.closest('.content') && ['INPUT', 'TEXTAREA'].includes(a.tagName) && a.type !== 'checkbox') return renderNav();
   if (ui.page === 'analysis' && a?.id === 'aq') { ui.analysisOpts.question = a.value; }
+  if (a?.id === 'asstText' && a.value) return renderNav();
   render();
 });
 window.api.on('progress', ({ videoId, accountId, pct: p }) => {
   ui.progress[videoId + ':' + accountId] = p;
   if (ui.page !== 'published' || ui._raf) return;
   ui._raf = setTimeout(() => { ui._raf = null; render(); }, 400);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.id === 'asstText' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); asstSend(e.target.value); }
 });
 
 window.api.on('tg', (st) => {

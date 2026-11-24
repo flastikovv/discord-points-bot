@@ -9,6 +9,7 @@ const youtube = require('./src/youtube');
 const tiktok = require('./src/tiktok');
 const ai = require('./src/ai');
 const { analyzeLocal } = require('./src/insights');
+const gemini = require('./src/gemini');
 const { TelegramBot, mdToTg } = require('./src/telegram');
 
 // Своя папка для данных: %APPDATA%\\MonetizationStudio
@@ -258,6 +259,28 @@ function portAlive(p) {
   });
 }
 
+// Обновляем установленный ClipApp файлами из студии (тема + бесплатный Gemini). Оригиналы — в app/_backup_studio
+function syncClipPatch(dir) {
+  const src = path.join(__dirname, 'clipapp-patch', 'app');
+  const walk = (rel) => {
+    for (const name of fs.readdirSync(path.join(src, rel))) {
+      const r = path.join(rel, name);
+      const from = path.join(src, r);
+      if (fs.statSync(from).isDirectory()) { walk(r); continue; }
+      const to = path.join(dir, 'app', r);
+      const data = fs.readFileSync(from);
+      try { if (fs.existsSync(to) && fs.readFileSync(to).equals(data)) continue; } catch (_) { /* */ }
+      try {
+        const bak = path.join(dir, 'app', '_backup_studio', r);
+        if (fs.existsSync(to) && !fs.existsSync(bak)) { fs.mkdirSync(path.dirname(bak), { recursive: true }); fs.copyFileSync(to, bak); }
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        fs.writeFileSync(to, data);
+      } catch (e) { console.warn('clip patch', r, e.message); }
+    }
+  };
+  try { walk(''); } catch (e) { console.warn('clip patch', e.message); }
+}
+
 async function startClipApp() {
   if (clip.port && await portAlive(clip.port)) return { port: clip.port, dir: store.data.settings.clipAppDir };
   if (clip.starting) return clip.starting;
@@ -269,9 +292,13 @@ async function startClipApp() {
       const p = +fs.readFileSync(path.join(dir, 'data', 'port.txt'), 'utf8').trim();
       if (p && await portAlive(p)) { clip.port = p; return { port: p, dir }; }
     } catch (_) { /* */ }
+    syncClipPatch(dir);
     const pyDir = path.join(dir, 'runtime', 'python');
     const py = fs.existsSync(path.join(pyDir, 'python.exe')) ? path.join(pyDir, 'python.exe') : path.join(pyDir, 'pythonw.exe');
-    const proc = spawn(py, ['-u', path.join(dir, 'app', 'server.py'), '--server-only'], { cwd: path.join(dir, 'app'), windowsHide: true });
+    const proc = spawn(py, ['-u', path.join(dir, 'app', 'server.py'), '--server-only'], {
+      cwd: path.join(dir, 'app'), windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', GEMINI_API_KEY: store.secret('geminiKey') || '', GEMINI_MODEL: store.data.settings.geminiModel || '' },
+    });
     clip.proc = proc;
     const port = await new Promise((resolve, reject) => {
       let buf = '';
@@ -490,6 +517,11 @@ function initTelegram() {
         };
       },
       money: async () => monetizationText(),
+      ask: async (args) => {
+        const q = args.join(' ').trim();
+        if (!q) return 'Напиши вопрос после команды, например:\n/ask придумай 5 тем для историй на неделю';
+        return '🤖 ' + mdToTg(await assistantSend(q));
+      },
       refresh: async () => { await refreshStats().catch(() => {}); return '🔄 Статистика обновлена.\n\n' + summaryText(7); },
       analyze: async () => {
         await tg.send('🧠 Запускаю анализ, это займёт около минуты…');
@@ -519,6 +551,73 @@ function initTelegram() {
   tg.start();
 }
 
+// ---------- Помощник (Gemini) ----------
+const ASSISTANT_SYSTEM = `Ты — личный помощник автора коротких видео в программе «Студия Монетизации».
+Автор ведёт: каналы с видео-историями на русском и английском (одни и те же истории в двух озвучках, это два разных видео),
+и TikTok-аккаунты с нарезками ютуберов и стримеров. Цель — рост просмотров и монетизация (партнёрка YouTube, TikTok Creator Rewards).
+Как отвечать:
+- по-русски, на «ты», просто и по делу, без воды; списки и **жирный** для главного;
+- опирайся на данные автора ниже; называй конкретные видео и цифры; не выдумывай цифр, которых нет;
+- если просят идеи — давай конкретные: тема, название (RU и EN, если про истории), хук на первые 2 секунды;
+- если просят перевести название/описание — переводи живо, как пишут англоязычные Shorts-авторы, а не дословно;
+- помни ограничения: в TikTok деньги платят за видео от 1 минуты; хук важнее всего в первые 2 секунды.`;
+
+function assistantContext() {
+  const L = [];
+  const now = Date.now();
+  L.push(`Сегодня: ${new Date().toLocaleString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`);
+  for (const a of store.data.accounts) {
+    const st = store.data.stats[a.id];
+    L.push(`\n### ${a.platform === 'youtube' ? 'YouTube' : 'TikTok'} «${a.name}»${a.lang ? ' ' + a.lang.toUpperCase() : ''}${a.group ? ' (' + (a.group === 'stories' ? 'истории' : 'нарезки') + ')' : ''}: ${a.followers || 0} подписчиков`);
+    if (!st) { L.push('статистика ещё не загружена'); continue; }
+    const vids = st.videos.filter((v) => new Date(v.publishedAt).getTime() <= now);
+    const recent = vids.filter((v) => now - new Date(v.publishedAt).getTime() < 30 * 864e5);
+    const avgViews = recent.length ? Math.round(recent.reduce((s, v) => s + v.views, 0) / recent.length) : 0;
+    L.push(`За 30 дней: ${recent.length} видео, в среднем ${avgViews} просмотров.`);
+    const line = (v) => `- «${v.title}» — ${v.views} просм., ${v.likes} лайков${v.avgViewPct != null ? ', досмотр ' + Math.round(v.avgViewPct) + '%' : ''}, ${v.duration || '?'} с, ${new Date(v.publishedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', weekday: 'short', hour: '2-digit', minute: '2-digit' })}`;
+    const sorted = [...recent].sort((x, y) => y.views - x.views);
+    if (sorted.length) {
+      L.push('Лучшие:'); sorted.slice(0, 5).forEach((v) => L.push(line(v)));
+      if (sorted.length > 5) { L.push('Слабые:'); sorted.slice(-4).forEach((v) => L.push(line(v))); }
+    }
+    const last = [...vids].sort((x, y) => new Date(y.publishedAt) - new Date(x.publishedAt)).slice(0, 5);
+    if (last.length) { L.push('Последние вышедшие:'); last.forEach((v) => L.push(line(v))); }
+    if (a.platform === 'youtube' && st.monetization) L.push(`Монетизация: Shorts за 90 дн ${st.monetization.shortsViews90 || 0} из 10 млн, часы длинных за год ${st.monetization.watchHours365 || 0} из 4000.`);
+  }
+  const drafts = store.data.videos.filter((v) => v.status === 'draft').slice(0, 10);
+  if (drafts.length) { L.push('\n### Черновики (ещё не выложены)'); drafts.forEach((v) => L.push(`- «${v.title || 'без названия'}»${v.lang ? ' ' + v.lang.toUpperCase() : ''}${v.durationSec ? ', ' + v.durationSec + ' с' : ''}`)); }
+  const sched = store.data.videos.filter((v) => v.status === 'scheduled' && v.scheduleAt);
+  if (sched.length) { L.push('\n### Запланировано'); sched.forEach((v) => L.push(`- «${v.title}» на ${new Date(v.scheduleAt).toLocaleString('ru-RU')}`)); }
+  const lastAn = store.data.analyses[0];
+  if (lastAn) L.push(`\n### Последний анализ (${new Date(lastAn.createdAt).toLocaleDateString('ru-RU')})\n${lastAn.text.slice(0, 2500)}`);
+  return L.join('\n');
+}
+
+async function assistantSend(text) {
+  const key = store.secret('geminiKey');
+  if (!key) throw new Error('Добавь бесплатный ключ Gemini в «Настройках» — помощник работает на нём.');
+  const conv = (store.data.assistant ||= { messages: [] });
+  conv.messages.push({ role: 'user', text: String(text).slice(0, 8000), t: Date.now() });
+  conv.pending = true;
+  store.save(); pushState();
+  try {
+    const answer = await gemini.chat(key, {
+      system: ASSISTANT_SYSTEM + '\n\n## Данные автора\n' + assistantContext(),
+      messages: conv.messages.slice(-24).map((m) => ({ role: m.role, text: m.text })),
+      model: store.data.settings.geminiModel || undefined,
+    });
+    conv.messages.push({ role: 'assistant', text: answer, t: Date.now() });
+    return answer;
+  } catch (e) {
+    conv.messages.pop();
+    throw e;
+  } finally {
+    conv.pending = false;
+    conv.messages = conv.messages.slice(-100);
+    store.save(); pushState();
+  }
+}
+
 async function videoDetail(accountId, videoId) {
   const acc = store.account(accountId);
   if (!acc) throw new Error('Аккаунт не найден');
@@ -539,6 +638,19 @@ function sampleRetention(ret) {
     const row = ret.reduce((a, b) => (Math.abs(b[0] - p) < Math.abs(a[0] - p) ? b : a));
     return [`${Math.round(p * 100)}%`, +row[1].toFixed(2)];
   }));
+}
+
+// Какой ИИ доступен: Gemini (бесплатно) → Claude API → нет
+function aiEngine() {
+  if (store.secret('geminiKey')) return 'gemini';
+  if (store.secret('anthropicKey')) return 'claude';
+  return null;
+}
+async function aiText(prompt, { system = ai.SYSTEM, effort = 'high', maxTokens = 32000 } = {}) {
+  const eng = aiEngine();
+  if (eng === 'gemini') return gemini.chat(store.secret('geminiKey'), { system, messages: [{ role: 'user', text: prompt }], model: store.data.settings.geminiModel || undefined });
+  if (eng === 'claude') return ai.ask(store.secret('anthropicKey'), prompt, { effort, maxTokens });
+  throw new Error('Добавь бесплатный ключ Gemini в «Настройках», чтобы работал ИИ.');
 }
 
 // mode: 'auto' (Claude по API, если есть ключ, иначе бесплатно), 'local', 'claude', 'prompt' (только текст запроса)
@@ -603,10 +715,11 @@ async function analyze({ days = 30, accountIds = [], question = '', weakCount = 
   };
   const prompt = ai.analysisPrompt(payload, question);
   if (mode === 'prompt') return { prompt: ai.SYSTEM + '\n\n' + prompt };
-  const useClaude = mode === 'claude' || (mode === 'auto' && key);
-  const text = useClaude ? await ai.ask(key, prompt) : analyzeLocal({ days, rows: all.map(row), weakest: weakest.map(row), best: best.map(row), accounts: accs });
+  const eng = mode === 'local' ? null : aiEngine();
+  const useClaude = !!eng;
+  const text = eng ? await aiText(prompt) : analyzeLocal({ days, rows: all.map(row), weakest: weakest.map(row), best: best.map(row), accounts: accs });
   const entry = {
-    id: store.id(), createdAt: Date.now(), days, question, source: useClaude ? 'claude-api' : 'local',
+    id: store.id(), createdAt: Date.now(), days, question, source: eng || 'local',
     accounts: accs.map((a) => a.name), text,
     weakest: weakest.map((x) => ({ accountId: x.acc.id, id: x.v.id, title: x.v.title, views: x.v.views, platform: x.acc.platform, account: x.acc.name, url: x.v.url })),
   };
@@ -635,7 +748,7 @@ function registerIpc() {
   handle('settings:save', (patch) => {
     const s = store.data.settings;
     for (const [k, v] of Object.entries(patch)) {
-      if (['googleClientSecret', 'tiktokClientSecret', 'anthropicKey'].includes(k)) { if (v) s[k] = store.enc(v.trim()); }
+      if (['googleClientSecret', 'tiktokClientSecret', 'anthropicKey', 'geminiKey'].includes(k)) { if (v) s[k] = store.enc(v.trim()); }
       else if (k in s) s[k] = typeof v === 'string' ? v.trim() : v;
     }
     store.save(); applyAutostart(); pushState();
@@ -771,8 +884,11 @@ function registerIpc() {
     store.save(); pushState();
     return entry;
   });
-  handle('ai:titles', (opts) => ai.ask(store.secret('anthropicKey'), ai.titlesPrompt(opts), { effort: 'medium', maxTokens: 4000 }));
-  handle('ai:ask', (q) => ai.ask(store.secret('anthropicKey'), q, { effort: 'medium', maxTokens: 8000 }));
+  handle('ai:titles', (opts) => aiText(ai.titlesPrompt(opts), { effort: 'medium', maxTokens: 4000 }));
+  handle('ai:ask', (q) => aiText(q, { effort: 'medium', maxTokens: 8000 }));
+  handle('assistant:send', (text) => assistantSend(text));
+  handle('assistant:clear', () => { store.data.assistant = { messages: [] }; store.save(); pushState(); });
+  handle('gemini:check', async () => { const m = await gemini.check(store.secret('geminiKey')); return m; });
   handle('analysis:delete', (id) => { store.data.analyses = store.data.analyses.filter((a) => a.id !== id); store.save(); pushState(); });
 
   handle('templates:save', (t) => {

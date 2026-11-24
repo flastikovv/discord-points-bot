@@ -196,7 +196,7 @@ function showProgress(on) {
   $("#startBtn").disabled = on; $("#exportBtn").disabled = on;
 }
 const STAGES = {download: "Скачиваю по ссылке", probe: "Читаю файл", audio: "Достаю звук", features: "Слушаю громкость и смех",
-  speech: "Распознаю речь", score: "Ищу лучшие моменты", llm: "Спрашиваю Claude", thumbs: "Делаю превью",
+  speech: "Распознаю речь", score: "Ищу лучшие моменты", llm: "Спрашиваю ИИ", thumbs: "Делаю превью",
   render: "Рендерю клипы", done: "Готово"};
 function poll() {
   clearInterval(polling);
@@ -411,10 +411,10 @@ async function init() {
   S = st.settings; AN = st.analysis;
   refreshPresets(st.presets); renderSettings(); renderBanners(); renderMoments();
   const t = st.tools;
-  $("#chips").innerHTML = [["ffmpeg", t.ffmpeg], ["речь (whisper)", t.whisper], ["видеокарта", t.nvenc], ["Claude", t.llm]]
+  $("#chips").innerHTML = [["ffmpeg", t.ffmpeg], ["речь (whisper)", t.whisper], ["видеокарта", t.nvenc], ["ИИ", t.llm]]
     .map(([n, ok]) => `<span class="chip ${ok ? "ok" : "no"}" title="${ok ? "есть" : "не найдено"}">${n} ${ok ? "✓" : "—"}</span>`).join("");
   if (!t.llm) { $("#llmChk").classList.add("disabled"); $("[data-k=use_llm]").disabled = true; if (S.use_llm) { S.use_llm = false; renderSettings(); } }
-  $("#llmChk").title = t.llm ? "Ключ найден" : "Положи свой ключ Claude API в файл config\\claude_api_key.txt (нажми «ключ…») и перезапусти программу";
+  $("#llmChk").title = t.llm ? "Ключ найден" : "Добавь бесплатный ключ Gemini в «Студии Монетизации» (Настройки) — или ключ Claude в config\\claude_api_key.txt";
   $("#llmKey").onclick = e => { e.preventDefault(); api("llm_key", {}); toast("Вставь ключ в открывшийся файл, сохрани и перезапусти программу"); };
   if (AN) { $("#source").value = AN.source; setSource(AN.source); }
   if (st.job && st.job.running) { showProgress(true); poll(); }

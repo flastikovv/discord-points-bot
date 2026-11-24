@@ -1,11 +1,11 @@
 {
   "name": "monetization-studio",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "description": "Студия Монетизации: загрузка видео на YouTube и TikTok, статистика, ИИ-анализ и Telegram-бот",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --x64 && node build/patch-exe.js && cd build && makensis -DVERSION=1.3.0 installer.nsi"
+    "dist": "electron-builder --win --x64 && node build/patch-exe.js && cd build && makensis -DVERSION=1.5.0 installer.nsi"
   },
   "author": "Студия Монетизации",
   "license": "UNLICENSED",
@@ -32,7 +32,8 @@
       "renderer/**",
       "assets/**",
       "node_modules/**",
-      "package.json"
+      "package.json",
+      "clipapp-patch/**"
     ],
     "win": {
       "target": [

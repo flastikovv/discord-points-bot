@@ -1,9 +1,10 @@
-"""Optional: let Claude rank candidate moments and write titles.
+"""Optional: let an AI (free Google Gemini, or Claude) rank candidate moments and write titles.
 
-Works only if the user put their own API key into config\\claude_api_key.txt (or set ANTHROPIC_API_KEY).
+Gemini: GEMINI_API_KEY env var (set by «Студия Монетизации») or config\\gemini_api_key.txt.
+Claude: config\\claude_api_key.txt (or ANTHROPIC_API_KEY).
 Any failure -> the caller falls back to local scoring, so the app never depends on it.
 """
-import json, os
+import json, os, urllib.request, urllib.error
 
 import engine
 
@@ -20,7 +21,54 @@ def api_key():
     return os.environ.get("ANTHROPIC_API_KEY")
 
 
+def gemini_key():
+    p = os.path.join(engine.CONFIG, "gemini_api_key.txt")
+    if os.path.isfile(p):
+        for ln in open(p, encoding="utf-8-sig"):
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                return ln
+    return os.environ.get("GEMINI_API_KEY")
+
+
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]
+
+
+def _gemini(prompt):
+    key = gemini_key()
+    body = json.dumps({
+        "contents": [{"role": "user", "parts": [{"text": prompt + "\n\nОтветь только JSON по описанной схеме, без пояснений."}]}],
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.6},
+    }).encode("utf-8")
+    models = ([os.environ["GEMINI_MODEL"]] if os.environ.get("GEMINI_MODEL") else []) + GEMINI_MODELS
+    last = None
+    for m in models:
+        req = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent",
+            data=body, headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                data = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            last = RuntimeError(f"Gemini HTTP {e.code}")
+            if e.code == 404:
+                continue
+            raise last
+        parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+        text = "".join(p.get("text", "") for p in parts).strip()
+        if text.startswith("```"):
+            text = text.strip("`").split("\n", 1)[-1]
+        return json.loads(text)
+    raise last or RuntimeError("Gemini недоступен")
+
+
+def engine_name():
+    return "Gemini" if gemini_key() else "Claude"
+
+
 def available():
+    if gemini_key():
+        return True
     try:
         import anthropic  # noqa: F401
     except Exception:
@@ -74,6 +122,8 @@ META_SCHEMA = {
 
 
 def _call(prompt, schema):
+    if gemini_key():
+        return _gemini(prompt + "\n\nСхема ответа (JSON Schema): " + json.dumps(schema, ensure_ascii=False))
     import anthropic
     client = anthropic.Anthropic(api_key=api_key(), timeout=180.0)
     resp = client.beta.messages.create(
@@ -103,7 +153,7 @@ def describe(ctx, clips, metas, s):
         "- description: 1–3 коротких предложения, о чём фрагмент, без спойлера концовки, с призывом досмотреть/подписаться;\n"
         f"- hashtags: 6–10 хештегов (с #), первым #shorts" +
         (f", обязательно включи: {md.get('tags')}" if md.get("tags") else "") + ".\n\n" + "\n".join(items))
-    ctx.log("Claude пишет названия, описания и хештеги…")
+    ctx.log(f"{engine_name()} пишет названия, описания и хештеги…")
     out = [dict(m) for m in metas]
     for c in _call(prompt, META_SCHEMA)["clips"]:
         i = c.get("index")
@@ -116,11 +166,8 @@ def describe(ctx, clips, metas, s):
 
 
 def rank(ctx, pool, n, s):
-    import anthropic
-
-    key = api_key()
-    if not key:
-        raise RuntimeError("нет ключа в config\\claude_api_key.txt")
+    if not gemini_key() and not api_key():
+        raise RuntimeError("нет ключа ИИ (Gemini или Claude)")
     lang = s.get("language", "auto")
     tl = {"ru": "на русском", "en": "in English"}.get(lang, "на языке фрагмента")
     items = []
@@ -135,20 +182,8 @@ def rank(ctx, pool, n, s):
         f"Для каждого выбранного дай score 0–100 и цепкий заголовок {tl} (до 60 символов, без хэштегов и кавычек).\n\n"
         + "\n".join(items)
     )
-    ctx.log(f"Спрашиваю Claude ({MODEL}) о {len(pool)} кандидатах…")
-    client = anthropic.Anthropic(api_key=key, timeout=180.0)
-    resp = client.beta.messages.create(
-        model=MODEL,
-        max_tokens=16000,
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
-        output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
-        messages=[{"role": "user", "content": prompt}],
-    )
-    if resp.stop_reason == "refusal":
-        raise RuntimeError("Claude отказался оценивать этот фрагмент")
-    text = "".join(b.text for b in resp.content if b.type == "text")
-    picks = json.loads(text)["picks"]
+    ctx.log(f"Спрашиваю {engine_name()} о {len(pool)} кандидатах…")
+    picks = _call(prompt, SCHEMA)["picks"]
     out = []
     for p in picks:
         i = p.get("index")
@@ -156,9 +191,9 @@ def rank(ctx, pool, n, s):
             c = dict(pool[i])
             c["title"] = p.get("title") or None
             c["score100"] = max(0, min(100, int(p.get("score", 0))))
-            c["parts"] = dict(c.get("parts", {}), Claude=round(c["score100"] / 100, 2))
+            c["parts"] = dict(c.get("parts", {}), **{engine_name(): round(c["score100"] / 100, 2)})
             out.append(c)
     if not out:
         raise RuntimeError("пустой ответ")
-    ctx.log(f"Claude выбрал {len(out)} моментов")
+    ctx.log(f"{engine_name()} выбрал {len(out)} моментов")
     return out[:n]

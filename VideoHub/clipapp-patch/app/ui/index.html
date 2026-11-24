@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipApp — нарезка</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='8' y='2' width='16' height='28' rx='4' fill='%239b6bff'/><path d='M13 11l8 5-8 5z' fill='%23fff'/></svg>">
+<link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo"></span>ClipApp <small>нарезка в вертикаль</small></div>
+  <div class="presets">
+    <label>Пресет</label>
+    <select id="presetSel"><option value="">— выбери —</option></select>
+    <button class="ghost" id="presetSave" title="Сохранить текущие настройки как пресет">Сохранить как…</button>
+    <button class="ghost" id="presetDel" title="Удалить выбранный пресет">Удалить</button>
+  </div>
+  <div class="chips" id="chips"></div>
+</header>
+
+<main>
+<aside id="settings">
+
+<details open><summary>1. Источник</summary>
+  <div class="row"><span class="lbl">Что режем</span>
+    <div class="seg" data-k="source_type"><button data-v="video">Видео</button><button data-v="stream">Стрим</button></div></div>
+  <div class="hint" data-show="source_type=stream">Длинные записи обрабатываются кусками по 3 минуты — прогресс и оставшееся время видно справа.</div>
+  <div class="row" data-show="source_type=stream"><span class="lbl">Искать по</span>
+    <div class="seg" data-k="stream_scan"><button data-v="active">живым участкам</button><button data-v="all">всему стриму</button></div></div>
+  <div class="row" data-show="source_type=stream&stream_scan=active"><span class="lbl">Доля стрима для распознавания</span>
+    <input type="range" min="10" max="80" step="5" data-k="active_share"><output data-o="active_share" data-suf="%"></output></div>
+  <div class="row" id="trackRow" hidden><span class="lbl">Аудиодорожка</span><select data-k="audio_track" data-num id="trackSel"></select></div>
+  <details class="sub"><summary>Ссылки (YouTube, Twitch, VK…)</summary>
+    <div class="row"><span class="lbl">Качество до</span>
+      <select data-k="dl_quality" data-num><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></div>
+    <div class="row"><span class="lbl">Скачать только кусок</span><input type="text" data-k="dl_section" placeholder="напр. 1:00:00-1:45:00"></div>
+    <div class="row"><span class="lbl">Идущий эфир: записать минут</span><input type="number" min="0" max="600" data-k="live_minutes" data-num><span class="unit">0 = до конца</span></div>
+    <label class="chk"><input type="checkbox" data-k="live_from_start"> Эфир — с самого начала</label>
+  </details>
+</details>
+
+<details open><summary>2. Нарезка</summary>
+  <div class="row"><span class="lbl">Кто выбирает моменты</span>
+    <div class="seg" data-k="cut_mode"><button data-v="auto">Сама</button><button data-v="manual">Я выбираю</button></div></div>
+  <div data-show="cut_mode=auto">
+    <div class="row"><span class="lbl">Сколько клипов</span><input type="range" min="1" max="30" data-k="clip_count"><input class="num" type="number" min="1" max="60" data-k="clip_count" data-num></div>
+    <div class="row"><span class="lbl">Мин. длина, с</span><input type="range" min="5" max="180" data-k="min_len"><input class="num" type="number" min="3" max="600" data-k="min_len" data-num></div>
+    <div class="row"><span class="lbl">Макс. длина, с</span><input type="range" min="10" max="180" data-k="max_len"><input class="num" type="number" min="5" max="900" data-k="max_len" data-num></div>
+    <div class="row"><span class="lbl">Ключевые слова</span><input type="text" data-k="keywords" placeholder="через запятую: гонка, авария, Тамаев"></div>
+    <label class="chk"><input type="checkbox" data-k="use_speech"> Распознавать речь (клип начинается и заканчивается на целой фразе)</label>
+    <label class="chk" id="llmChk"><input type="checkbox" data-k="use_llm"> Ранжировать и писать названия через ИИ (Gemini — бесплатно) <a href="#" id="llmKey">ключ…</a></label>
+  </div>
+  <div data-show="cut_mode=manual">
+    <div class="row"><span class="lbl">Как</span>
+      <div class="seg" data-k="manual_kind"><button data-v="ranges">Отрезки по времени</button><button data-v="fixed">Кусками по N секунд</button></div></div>
+    <div data-show="manual_kind=ranges">
+      <textarea data-k="ranges" rows="5" placeholder="Каждый отрезок с новой строки (можно добавить название):&#10;0:15-0:48&#10;1:05:10-1:06:30 Литвин обгоняет&#10;125-170"></textarea>
+    </div>
+    <div data-show="manual_kind=fixed">
+      <div class="row"><span class="lbl">Длина куска, с</span><input type="range" min="5" max="180" data-k="fixed_len"><input class="num" type="number" min="1" max="900" step="0.5" data-k="fixed_len" data-num></div>
+      <div class="row"><span class="lbl">С / до</span><input type="text" data-k="fixed_from" placeholder="0:00" class="short"><input type="text" data-k="fixed_to" placeholder="до конца" class="short"></div>
+    </div>
+  </div>
+  <div class="row"><span class="lbl">Язык речи</span>
+    <div class="seg" data-k="language"><button data-v="auto">Авто</button><button data-v="ru">RU</button><button data-v="en">EN</button></div></div>
+</details>
+
+<details><summary>3. Формат и звук</summary>
+  <div class="row"><span class="lbl">Кадр</span>
+    <div class="seg" data-k="format"><button data-v="crop">9:16 обрезка</button><button data-v="blur">Размытый фон</button><button data-v="original">Как есть</button></div></div>
+  <div class="row" data-show="format=crop"><span class="lbl">Куда смотреть</span>
+    <div class="seg" data-k="crop_mode"><button data-v="face">На лица (авто)</button><button data-v="center">Центр</button><button data-v="manual">Вручную</button></div></div>
+  <div class="row" data-show="format=crop&crop_mode=manual|format=blur"><span class="lbl">Сдвиг влево ↔ вправо</span><input type="range" min="0" max="100" data-k="focus"><output data-o="focus" data-suf="%"></output></div>
+  <div class="row" data-show="format=blur"><span class="lbl">Увеличение картинки</span><input type="range" min="1" max="2" step="0.05" data-k="zoom"><output data-o="zoom" data-suf="×"></output></div>
+  <label class="chk"><input type="checkbox" data-k="jumpcut"> Вырезать паузы (jump cut)</label>
+  <div class="row" data-show="jumpcut"><span class="lbl">Пауза длиннее, с</span><input type="range" min="0.2" max="2" step="0.1" data-k="pause_thr"><output data-o="pause_thr" data-suf=" с"></output></div>
+  <label class="chk"><input type="checkbox" data-k="loudnorm"> Выровнять громкость до −14 LUFS</label>
+  <label class="chk"><input type="checkbox" data-k="beep"> Запикивать мат в звуке</label>
+  <div class="row"><span class="lbl">Цвет</span>
+    <div class="swatches" data-k="color">
+      <button data-v="none"><i style="background:linear-gradient(135deg,#777,#aaa)"></i>Без</button>
+      <button data-v="juicy"><i style="background:linear-gradient(135deg,#ff3d6e,#ffc400,#00d4ff)"></i>Сочный</button>
+      <button data-v="cinema"><i style="background:linear-gradient(135deg,#0f5c6e,#e7a35a)"></i>Кино</button>
+      <button data-v="warm"><i style="background:linear-gradient(135deg,#f6a04d,#ffdd99)"></i>Тёплый</button>
+    </div></div>
+  <div class="row"><span class="lbl">Кодирование</span>
+    <select data-k="encoder"><option value="auto">Видеокарта, если есть (быстро)</option><option value="cpu">Процессор</option></select>
+    <select data-k="quality"><option value="fast">Быстро</option><option value="normal">Обычно</option><option value="best">Макс. качество</option></select></div>
+</details>
+
+<details><summary>4. Субтитры</summary>
+  <label class="chk"><input type="checkbox" data-k="subs.on"> Субтитры по словам</label>
+  <div data-show="subs.on">
+    <div class="subprev" id="subPrev"><div class="phone"><span id="subSample"></span></div></div>
+    <div class="row"><span class="lbl">Шрифт</span><select data-k="subs.font" class="fontsel"></select></div>
+    <div class="row"><span class="lbl">Размер</span><input type="range" min="40" max="160" data-k="subs.size"><output data-o="subs.size"></output></div>
+    <div class="row"><span class="lbl">Цвет / активное слово</span><input type="color" data-k="subs.color"><input type="color" data-k="subs.active"></div>
+    <div class="row"><span class="lbl">Обводка</span><input type="range" min="0" max="16" data-k="subs.outline"><output data-o="subs.outline"></output></div>
+    <div class="row"><span class="lbl">Положение</span>
+      <div class="seg" data-k="subs.position"><button data-v="top">Сверху</button><button data-v="middle">Центр</button><button data-v="low">Ниже центра</button><button data-v="bottom">Снизу</button></div></div>
+    <div class="row"><span class="lbl">Слов на экране</span><input type="range" min="1" max="6" data-k="subs.words"><output data-o="subs.words"></output></div>
+    <label class="chk"><input type="checkbox" data-k="subs.upper"> ЗАГЛАВНЫМИ</label>
+    <label class="chk"><input type="checkbox" data-k="subs.pop"> Активное слово чуть крупнее</label>
+    <label class="chk"><input type="checkbox" data-k="subs.censor"> Скрывать мат в субтитрах (бл*ть, с*ка)</label>
+  </div>
+</details>
+
+<details><summary>5. Текст на нарезке</summary>
+  <div class="row"><span class="lbl">Заголовок сверху</span>
+    <div class="seg" data-k="headline.mode"><button data-v="off">Нет</button><button data-v="custom">Свой текст</button><button data-v="title">Название клипа</button></div></div>
+  <div data-show="headline.mode=custom">
+    <input type="text" data-k="headline.text" placeholder="ЛИТВИН [ПРОЕ**Л] ГОНКУ ТАМАЕВУ?">
+    <div class="hint">Слова в [квадратных скобках] будут выделены цветом.</div>
+  </div>
+  <label class="chk"><input type="checkbox" data-k="headline.part_on"> Плашка «ЧАСТЬ 1, 2, 3…»</label>
+  <div data-show="headline.part_on" class="row"><span class="lbl">Текст / с какого номера</span>
+    <input type="text" data-k="headline.part_tpl" class="short"><input type="number" min="1" class="num" data-k="headline.part_start" data-num></div>
+  <div data-show="headline.mode!=off|headline.part_on">
+    <div class="hlprev" id="hlPrev"><div class="phone"><div class="hlbox" id="hlBox"></div></div></div>
+    <div class="row"><span class="lbl">Шрифт</span><select data-k="headline.font" class="fontsel"></select></div>
+    <div class="row"><span class="lbl">Размер</span><input type="range" min="40" max="140" data-k="headline.size"><output data-o="headline.size"></output></div>
+    <div class="row"><span class="lbl">Цвет / выделение</span><input type="color" data-k="headline.color"><input type="color" data-k="headline.accent"></div>
+    <div class="row" data-show="headline.part_on"><span class="lbl">Плашка: фон / текст</span><input type="color" data-k="headline.part_bg"><input type="color" data-k="headline.part_color"></div>
+    <div class="row"><span class="lbl">Отступ сверху</span><input type="range" min="2" max="60" data-k="headline.y"><output data-o="headline.y" data-suf="%"></output></div>
+    <div class="row"><span class="lbl">Показывать</span><input type="number" min="0" max="600" class="num" data-k="headline.secs" data-num><span class="unit">сек (0 = весь клип)</span></div>
+    <label class="chk"><input type="checkbox" data-k="headline.upper"> ЗАГЛАВНЫМИ</label>
+    <label class="chk"><input type="checkbox" data-k="headline.plate"> Тёмная подложка под текстом</label>
+  </div>
+</details>
+
+<details><summary>6. Название, описание, хештеги</summary>
+  <div class="hint">Для каждого клипа программа пишет название, описание и хештеги — в файл рядом с видео и в общий «клипы.txt».</div>
+  <div class="row"><span class="lbl">Всегда добавлять теги</span><input type="text" data-k="meta.tags" placeholder="#литвин #тамаев #гонка"></div>
+  <div class="row"><span class="lbl">Авто-тегов из речи</span><input type="range" min="0" max="10" data-k="meta.auto_tags"><output data-o="meta.auto_tags"></output></div>
+  <div class="row col"><span class="lbl">Шаблон описания ({title} {text} {tags} {n})</span><textarea rows="3" data-k="meta.desc_tpl"></textarea></div>
+</details>
+
+<details open><summary>7. Баннеры (зелёный фон)</summary>
+  <div class="hint">Кинь сюда видео или картинку на зелёном фоне (кнопка «Подписаться» и т.п.) — зелёный уберётся автоматически.</div>
+  <div id="banners"></div>
+  <div class="bnadd" id="bnDrop"><button id="bnAdd">+ Добавить баннер</button><span>или перетащи файл сюда</span></div>
+</details>
+
+</aside>
+
+<section id="work">
+  <div class="source" id="dropZone">
+    <div class="srcrow">
+      <input type="text" id="source" placeholder="Перетащи видео сюда, выбери файл или вставь ссылку на видео / стрим">
+      <button id="pickVideo">Выбрать файл…</button>
+    </div>
+    <div class="srcinfo" id="srcInfo">Поддерживаются mp4, mkv, mov, webm, ts и ссылки YouTube / Twitch / VK и др.</div>
+  </div>
+
+  <div class="actions">
+    <button class="primary big" id="startBtn">▶ Старт — найти моменты</button>
+    <label class="chk inline"><input type="checkbox" id="autoExport"> и сразу экспортировать</label>
+    <button class="danger" id="stopBtn" hidden>■ Стоп</button>
+  </div>
+  <div class="progress" id="progress" hidden>
+    <div class="bar"><i id="barFill"></i></div>
+    <div class="ptext"><span id="pStage"></span><span id="pEta"></span></div>
+  </div>
+
+  <div class="momhead" id="momHead" hidden>
+    <h2>Найденные моменты <small id="momCount"></small></h2>
+    <div class="momtools">
+      <button class="ghost" id="selAll">Выбрать все</button><button class="ghost" id="selNone">Снять все</button>
+      <span class="addm"><input type="text" id="addA" placeholder="начало" class="short"><input type="text" id="addB" placeholder="конец" class="short"><button class="ghost" id="addBtn">+ Свой отрезок</button></span>
+    </div>
+  </div>
+  <div id="moments" class="moments"></div>
+  <div class="empty" id="empty">
+    <div class="steps">
+      <div><b>1</b>Выбери видео, перетащи его в окно или вставь ссылку</div>
+      <div><b>2</b>Настрой слева: стрим/видео, сама или вручную, субтитры, текст, баннеры</div>
+      <div><b>3</b>Нажми «Старт», отметь нужные моменты и жми «Экспорт»</div>
+    </div>
+  </div>
+
+  <div class="exportbar" id="exportBar" hidden>
+    <div class="outdir"><span>Папка экспорта:</span><input type="text" id="outDir" data-k="out_dir" placeholder="выбери кнопкой или вставь путь, например E:\videos\нарезки"><button class="ghost" id="pickOut">Выбрать…</button></div>
+    <button class="primary big" id="exportBtn">⬇ Экспорт выбранных</button>
+    <button class="ghost" id="openOut" hidden>Открыть папку с клипами</button>
+  </div>
+
+  <details class="log"><summary>Журнал</summary><pre id="log"></pre></details>
+</section>
+</main>
+
+<div class="modal" id="modal" hidden>
+  <div class="mbox">
+    <button class="x" id="modalX">✕</button>
+    <video id="pv" controls autoplay playsinline></video>
+    <div class="hint">Это быстрый черновой просмотр (пол-разрешения). В экспорте будет полное качество.</div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="/ui/app.js"></script>
+</body>
+</html>

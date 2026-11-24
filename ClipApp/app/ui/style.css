@@ -125,3 +125,32 @@ button.big{padding:11px 22px;font-size:15px}
 .toast.err{border-color:#7a2f2f;background:#3a1f1f}
 [hidden]{display:none!important}
 ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#333844;border-radius:6px}
+
+/* ===== Тема «Студии Монетизации»: тёмно-фиолетовая с зелёным ===== */
+:root{
+  --bg:#0e0c15;--panel:#17141f;--panel2:#1e1a29;--line:#2d2640;--text:#ece8f7;--muted:#9d95b5;
+  --acc:#9b6bff;--acc2:#7c4dff;--red:#ff6b81;--green:#3ddc97;--r:12px;
+  --grad:linear-gradient(135deg,#9b6bff 0%,#5fd0b0 100%);--soft:rgba(155,107,255,.16);
+}
+header{background:var(--panel)}
+.logo{width:26px;height:26px;border-radius:8px;background:var(--grad);box-shadow:0 4px 14px rgba(155,107,255,.35)}
+.logo:after{left:10px;top:8px;border-left:8px solid #fff}
+button{border-radius:10px}
+button:hover{border-color:#463b63;background:#262033}
+button.primary{background:var(--grad);color:#fff;border:0;box-shadow:0 6px 18px rgba(155,107,255,.28)}
+button.primary:hover{background:var(--grad);filter:brightness(1.08)}
+.seg{border-radius:10px;background:var(--bg)}
+.seg button.on{background:var(--soft);color:#fff;box-shadow:inset 0 -2px 0 var(--green)}
+.posgrid button.on{background:var(--soft);color:#fff;border-color:var(--acc)}
+details>summary::before{color:var(--green)}
+output{color:var(--green)}
+.chk input,input[type=range]{accent-color:var(--green)}
+.chk a{color:var(--green)}
+input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--soft)}
+.source.drag,.bnadd.drag{border-color:var(--green);background:rgba(61,220,151,.08)}
+.bar i{background:var(--grad)}
+.exportbar{background:rgba(23,20,31,.93)}
+.chip.ok{color:#7cf0c0;border-color:rgba(61,220,151,.4);background:rgba(61,220,151,.1)}
+.chip.no{color:#ff9daf;border-color:rgba(255,107,129,.35);background:rgba(255,107,129,.08)}
+.phone{background:linear-gradient(160deg,#3a2f5c,#1a1626 60%,#1f3a33)}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#2f2843;border-radius:10px;border:2px solid var(--bg)}

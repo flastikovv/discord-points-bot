@@ -310,3 +310,28 @@ td.hm.empty-c { background: var(--panel2); }
 .acc-row { flex-wrap: wrap; }
 .acc-row > .grow { min-width: 180px; }
 .acc-row img.av, .acc-row .av-ph { flex: none; }
+
+/* ---------- Нарезка моментов ---------- */
+main.clips-mode .content { flex: none; padding-bottom: 10px; }
+.clip-wrap { flex: 1; min-height: 0; margin: 0 28px 20px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #0f0f12; }
+.clip-wrap iframe { width: 100%; height: 100%; border: 0; display: block; }
+.clip-strip { display: grid; gap: 8px; }
+.clip-ready { display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: var(--green-soft); border: 1px solid rgba(61, 220, 151, .35); border-radius: 10px; }
+
+/* ---------- Помощник ---------- */
+.chat { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 130px); max-width: 980px; }
+.chat-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 4px 4px 10px; }
+.msg { display: flex; gap: 6px; align-items: flex-start; }
+.msg.user { justify-content: flex-end; }
+.bubble { max-width: 78%; padding: 11px 15px; border-radius: 14px; line-height: 1.55; user-select: text; }
+.msg.user .bubble { background: var(--violet-2); color: #fff; border-bottom-right-radius: 4px; }
+.msg.assistant .bubble { background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.msg.assistant .bubble .spinner { display: inline-block; vertical-align: -4px; margin-right: 6px; border-color: var(--violet-soft); border-top-color: var(--green); }
+.chat-input { display: flex; gap: 10px; align-items: flex-end; }
+.chat-input textarea { min-height: 52px; resize: none; }
+.asst-empty { margin: auto 0; }
+.quick { display: flex; flex-wrap: wrap; gap: 8px; }
+.quick .btn { white-space: normal; text-align: left; }
+ol.steps { padding-left: 20px; display: grid; gap: 6px; margin: 0 0 14px; }
+.seg button { white-space: nowrap; }
+.topbar .actions { flex-wrap: wrap; justify-content: flex-end; }

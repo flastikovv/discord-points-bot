@@ -14,6 +14,8 @@ const DEFAULT = {
     tiktokRedirectUri: 'http://localhost:53682/callback/',
     tiktokAudited: false,
     anthropicKey: '', // enc
+    geminiKey: '', // enc
+    geminiModel: '',
     autostart: true,
     keepInTray: true,
     statsAutoRefreshHours: 3,
@@ -103,6 +105,8 @@ class Store {
         tiktokRedirectUri: s.tiktokRedirectUri,
         tiktokAudited: s.tiktokAudited,
         hasAnthropicKey: !!s.anthropicKey,
+        hasGeminiKey: !!s.geminiKey,
+        geminiModel: s.geminiModel,
         autostart: s.autostart,
         keepInTray: s.keepInTray,
         statsAutoRefreshHours: s.statsAutoRefreshHours,
@@ -116,6 +120,7 @@ class Store {
       details: this.data.details,
       analyses: this.data.analyses,
       templates: this.data.templates,
+      assistant: this.data.assistant || { messages: [] },
     };
   }
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClipApp — нарезка</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='8' y='2' width='16' height='28' rx='4' fill='%23ffc446'/><path d='M13 11l8 5-8 5z' fill='%23111'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='8' y='2' width='16' height='28' rx='4' fill='%239b6bff'/><path d='M13 11l8 5-8 5z' fill='%23fff'/></svg>">
 <link rel="stylesheet" href="/ui/style.css">
 </head>
 <body>
@@ -49,7 +49,7 @@
     <div class="row"><span class="lbl">Макс. длина, с</span><input type="range" min="10" max="180" data-k="max_len"><input class="num" type="number" min="5" max="900" data-k="max_len" data-num></div>
     <div class="row"><span class="lbl">Ключевые слова</span><input type="text" data-k="keywords" placeholder="через запятую: гонка, авария, Тамаев"></div>
     <label class="chk"><input type="checkbox" data-k="use_speech"> Распознавать речь (клип начинается и заканчивается на целой фразе)</label>
-    <label class="chk" id="llmChk"><input type="checkbox" data-k="use_llm"> Ранжировать и писать названия через Claude <a href="#" id="llmKey">ключ…</a></label>
+    <label class="chk" id="llmChk"><input type="checkbox" data-k="use_llm"> Ранжировать и писать названия через ИИ (Gemini — бесплатно) <a href="#" id="llmKey">ключ…</a></label>
   </div>
   <div data-show="cut_mode=manual">
     <div class="row"><span class="lbl">Как</span>

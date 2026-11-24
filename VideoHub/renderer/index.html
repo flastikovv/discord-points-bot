@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data: file:; media-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data: file:; media-src 'self' file:; frame-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <title>Студия Монетизации</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -26,6 +26,7 @@
       <div class="actions" id="pageActions"></div>
     </div>
     <div class="content" id="content"></div>
+    <div class="clip-wrap" id="clipWrap" hidden></div>
   </main>
   <div class="toasts" id="toasts"></div>
   <div id="modalRoot"></div>
