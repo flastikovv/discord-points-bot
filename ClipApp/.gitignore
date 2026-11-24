@@ -1,0 +1,12 @@
+runtime/
+data/
+config/
+_test_out/
+*.exe
+*.ico
+*.mp4
+*.bin
+install.log
+__pycache__/
+_build/payload/
+_build/payload.zip

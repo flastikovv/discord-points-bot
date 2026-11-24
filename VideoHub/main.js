@@ -2,6 +2,8 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, Notification, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
+const { spawn, execFile } = require('child_process');
 const { Store } = require('./src/store');
 const youtube = require('./src/youtube');
 const tiktok = require('./src/tiktok');
@@ -217,6 +219,126 @@ async function tick() {
   } finally {
     ticking = false;
   }
+}
+
+// ---------- Нарезка моментов (ClipApp) ----------
+// Запускаем установленный ClipApp в режиме сервера без окна и показываем его интерфейс во вкладке.
+const clip = { proc: null, port: null, starting: null };
+
+const validClipDir = (d) => !!d && fs.existsSync(path.join(d, 'app', 'server.py'))
+  && (fs.existsSync(path.join(d, 'runtime', 'python', 'python.exe')) || fs.existsSync(path.join(d, 'runtime', 'python', 'pythonw.exe')));
+
+function regClipDir() {
+  return new Promise((res) => {
+    if (process.platform !== 'win32') return res(null);
+    execFile('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ClipApp', '/v', 'InstallLocation'], { windowsHide: true }, (e, out) => {
+      const m = /InstallLocation\s+REG_\w+\s+(.+)/.exec(out || '');
+      res(m ? m[1].trim() : null);
+    });
+  });
+}
+
+async function findClipDir() {
+  const saved = store.data.settings.clipAppDir;
+  if (validClipDir(saved)) return saved;
+  const cands = [await regClipDir(), 'E:\\ClipApp', path.join(process.env.LOCALAPPDATA || '', 'Programs', 'ClipApp'), 'D:\\ClipApp', 'C:\\ClipApp'];
+  for (const c of cands) {
+    if (validClipDir(c)) { store.data.settings.clipAppDir = c; store.save(); return c; }
+  }
+  return null;
+}
+
+function portAlive(p) {
+  return new Promise((res) => {
+    const sock = net.connect(p, '127.0.0.1');
+    sock.setTimeout(700);
+    sock.on('connect', () => { sock.destroy(); res(true); });
+    sock.on('error', () => res(false));
+    sock.on('timeout', () => { sock.destroy(); res(false); });
+  });
+}
+
+async function startClipApp() {
+  if (clip.port && await portAlive(clip.port)) return { port: clip.port, dir: store.data.settings.clipAppDir };
+  if (clip.starting) return clip.starting;
+  clip.starting = (async () => {
+    const dir = await findClipDir();
+    if (!dir) throw Object.assign(new Error('ClipApp не найден'), { notFound: true });
+    // уже запущен отдельно — подключаемся к нему
+    try {
+      const p = +fs.readFileSync(path.join(dir, 'data', 'port.txt'), 'utf8').trim();
+      if (p && await portAlive(p)) { clip.port = p; return { port: p, dir }; }
+    } catch (_) { /* */ }
+    const pyDir = path.join(dir, 'runtime', 'python');
+    const py = fs.existsSync(path.join(pyDir, 'python.exe')) ? path.join(pyDir, 'python.exe') : path.join(pyDir, 'pythonw.exe');
+    const proc = spawn(py, ['-u', path.join(dir, 'app', 'server.py'), '--server-only'], { cwd: path.join(dir, 'app'), windowsHide: true });
+    clip.proc = proc;
+    const port = await new Promise((resolve, reject) => {
+      let buf = '';
+      let err = '';
+      const timer = setTimeout(() => reject(new Error('ClipApp не ответил за 60 секунд')), 60000);
+      proc.stdout.on('data', (d) => { buf += d; const m = /^(\d{2,5})\s*$/m.exec(buf); if (m) { clearTimeout(timer); resolve(+m[1]); } });
+      proc.stderr.on('data', (d) => { err += d; });
+      proc.on('exit', () => {
+        clearTimeout(timer);
+        clip.proc = null; clip.port = null;
+        reject(new Error('ClipApp закрылся при запуске' + (err ? ': ' + err.slice(-400) : '')));
+      });
+    });
+    clip.port = port;
+    return { port, dir };
+  })().finally(() => { clip.starting = null; });
+  return clip.starting;
+}
+
+function clipOutDir(dir) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'data', 'settings.json'), 'utf8').replace(/^\uFEFF/, '')).out_dir || ''; } catch (_) { return ''; }
+}
+
+function readClipsJson(folder) {
+  return JSON.parse(fs.readFileSync(path.join(folder, 'clips.json'), 'utf8').replace(/^\uFEFF/, ''));
+}
+
+async function scanClipExports() {
+  const dir = await findClipDir();
+  if (!dir) return { outDir: '', exports: [] };
+  const out = clipOutDir(dir);
+  if (!out || !fs.existsSync(out)) return { outDir: out, exports: [] };
+  const imported = new Set(store.data.clipImported || []);
+  const list = [];
+  for (const name of fs.readdirSync(out)) {
+    const folder = path.join(out, name);
+    const j = path.join(folder, 'clips.json');
+    if (!fs.existsSync(j)) continue;
+    let clips;
+    try { clips = readClipsJson(folder); } catch (_) { continue; }
+    list.push({ folder, name, count: clips.length, mtime: fs.statSync(j).mtimeMs, imported: imported.has(folder) });
+  }
+  list.sort((a, b) => b.mtime - a.mtime);
+  return { outDir: out, exports: list.slice(0, 15) };
+}
+
+function importClipExport(folder) {
+  const clips = readClipsJson(folder);
+  const targets = store.data.accounts.filter((a) => a.group === 'clips').map((a) => a.id);
+  let n = 0;
+  for (const c of clips) {
+    const file = path.join(folder, c.file);
+    if (!fs.existsSync(file)) continue;
+    store.data.videos.unshift({
+      id: store.id(), createdAt: Date.now(), status: 'draft', results: [],
+      filePath: file, fileName: c.file, fileSize: fs.statSync(file).size,
+      title: c.title || c.file.replace(/\.[^.]+$/, ''), description: c.description || '',
+      tags: (c.hashtags || []).map((x) => String(x).replace(/^#/, '')).filter(Boolean),
+      kind: 'clips', lang: '', accountIds: targets,
+      youtube: { privacy: 'public', madeForKids: false, categoryId: '24' }, tiktok: { mode: 'direct', privacy: 'PUBLIC_TO_EVERYONE' },
+      fromClipApp: true,
+    });
+    n++;
+  }
+  store.data.clipImported = [...new Set([...(store.data.clipImported || []), folder])].slice(-200);
+  store.save(); pushState();
+  return n;
 }
 
 // ---------- Статистика ----------
@@ -680,13 +802,32 @@ function registerIpc() {
   handle('tg:unlink', () => { Object.assign(store.data.settings.telegram, { chatId: null, chatName: '', pairCode: String(Math.floor(100000 + Math.random() * 900000)) }); store.save(); pushState(); });
   handle('tg:removeToken', () => { tg.stop(); store.data.settings.telegramToken = ''; store.data.settings.telegram.chatId = null; store.save(); pushState(); });
 
+  handle('clip:start', async () => {
+    try { return { ok: true, ...(await startClipApp()) }; } catch (e) { return { ok: false, notFound: !!e.notFound, error: e.message }; }
+  });
+  handle('clip:pickDir', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Папка, куда установлен ClipApp', properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const d = r.filePaths[0];
+    if (!validClipDir(d)) throw new Error('В этой папке нет ClipApp (нужны app\\server.py и runtime\\python). Обычно это E:\\ClipApp.');
+    store.data.settings.clipAppDir = d; store.save();
+    return d;
+  });
+  handle('clip:scan', () => scanClipExports());
+  handle('clip:import', (folder) => importClipExport(folder));
+  handle('clip:restart', async () => {
+    try { clip.proc?.kill(); } catch (_) { /* */ }
+    clip.proc = null; clip.port = null;
+    try { return { ok: true, ...(await startClipApp()) }; } catch (e) { return { ok: false, notFound: !!e.notFound, error: e.message }; }
+  });
+
   handle('shell:open', (url) => shell.openExternal(url));
   handle('shell:showFile', (p) => shell.showItemInFolder(p));
   handle('app:version', () => app.getVersion());
 }
 
 app.on('second-instance', () => { if (win) { win.show(); win.focus(); } });
-app.on('before-quit', () => { quitting = true; try { store.saveNow(); } catch (_) { /* */ } });
+app.on('before-quit', () => { quitting = true; try { clip.proc?.kill(); } catch (_) { /* */ } try { store.saveNow(); } catch (_) { /* */ } });
 app.on('window-all-closed', () => { if (!store?.data.settings.keepInTray) app.quit(); });
 
 app.whenReady().then(() => {
