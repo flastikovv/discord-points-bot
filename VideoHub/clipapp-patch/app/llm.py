@@ -31,7 +31,7 @@ def gemini_key():
     return os.environ.get("GEMINI_API_KEY")
 
 
-GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]
 
 
 def _gemini(prompt):
@@ -46,14 +46,24 @@ def _gemini(prompt):
         req = urllib.request.Request(
             f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent",
             data=body, headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=180) as r:
-                data = json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            last = RuntimeError(f"Gemini HTTP {e.code}")
-            if e.code == 404:
-                continue
-            raise last
+        data = None
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as e:
+                last = RuntimeError("серверы Gemini перегружены, попробуй позже" if e.code in (500, 503) else
+                                    "лимит Gemini исчерпан, подожди минуту" if e.code == 429 else f"Gemini HTTP {e.code}")
+                if e.code in (500, 503) and attempt == 0:
+                    import time
+                    time.sleep(2)
+                    continue
+                if e.code in (404, 429, 500, 503):
+                    break
+                raise last
+        if data is None:
+            continue
         parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
         text = "".join(p.get("text", "") for p in parts).strip()
         if text.startswith("```"):
