@@ -335,3 +335,6 @@ main.clips-mode .content { flex: none; padding-bottom: 10px; }
 ol.steps { padding-left: 20px; display: grid; gap: 6px; margin: 0 0 14px; }
 .seg button { white-space: nowrap; }
 .topbar .actions { flex-wrap: wrap; justify-content: flex-end; }
+.thumb-pick { position: relative; margin-bottom: 10px; border-radius: 10px; overflow: hidden; background: #000; max-height: 220px; display: grid; place-items: center; }
+.thumb-pick img { max-width: 100%; max-height: 220px; object-fit: contain; display: block; }
+.thumb-pick .icon-btn { position: absolute; top: 6px; right: 6px; background: rgba(0, 0, 0, .6); color: #fff; }

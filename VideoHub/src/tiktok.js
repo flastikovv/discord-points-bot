@@ -165,7 +165,7 @@ async function upload(store, acc, video, { onProgress, signal }) {
       post_info: {
         title: caption, privacy_level: privacy,
         disable_comment: !!tt.disableComment, disable_duet: false, disable_stitch: false,
-        video_cover_timestamp_ms: 1000,
+        video_cover_timestamp_ms: Math.max(0, Math.round((video.thumbTime ?? 1) * 1000)),
       },
       source_info: source,
     });

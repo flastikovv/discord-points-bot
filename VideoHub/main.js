@@ -123,6 +123,9 @@ async function runTarget(video, result) {
       throw Object.assign(new Error('Видео успело загрузиться до отмены — удали его на сайте, если оно не нужно'), { late: true });
     }
     Object.assign(result, out, { progress: 100, doneAt: Date.now(), scheduledFor: scheduleAt || null });
+    if (acc.platform === 'youtube' && video.thumbPath && fs.existsSync(video.thumbPath) && out.remoteId) {
+      try { await youtube.setThumbnail(store, acc, out.remoteId, video.thumbPath); result.thumbError = ''; } catch (e) { result.thumbError = e.message; }
+    }
     // время поменяли, пока шла загрузка — применяем новое
     if (out.status === 'scheduled' && video.scheduleAt !== scheduleAt) {
       try {
@@ -366,6 +369,47 @@ function importClipExport(folder) {
   store.data.clipImported = [...new Set([...(store.data.clipImported || []), folder])].slice(-200);
   store.save(); pushState();
   return n;
+}
+
+// ---------- Превью (обложки) ----------
+// Кадр из видео или картинку перекодируем в JPEG до 2 МБ в скрытом окне (там разрешено читать локальные файлы).
+async function renderImage({ video, image, time = 1 }) {
+  const w = new BrowserWindow({ show: false, width: 400, height: 300, webPreferences: { webSecurity: false, sandbox: true, contextIsolation: true } });
+  try {
+    await w.loadURL('data:text/html;charset=utf-8,<html><body></body></html>');
+    const src = require('url').pathToFileURL(video || image).href;
+    const js = `(async () => {
+      let el, W, H;
+      if (${JSON.stringify(!!video)}) {
+        el = document.createElement('video'); el.muted = true; el.preload = 'auto'; el.src = ${JSON.stringify(src)};
+        await new Promise((r, j) => { el.onloadeddata = r; el.onerror = () => j(new Error('Не удалось открыть видео')); });
+        const t = Math.min(Math.max(0, ${Number(time) || 0}), Math.max(0, el.duration - 0.05));
+        el.currentTime = t;
+        await new Promise((r) => { el.onseeked = r; setTimeout(r, 4000); });
+        W = el.videoWidth; H = el.videoHeight;
+      } else {
+        el = new Image(); el.src = ${JSON.stringify(src)};
+        await new Promise((r, j) => { el.onload = r; el.onerror = () => j(new Error('Не удалось открыть картинку')); });
+        W = el.naturalWidth; H = el.naturalHeight;
+      }
+      const k = Math.min(1, 1920 / Math.max(W, H));
+      const c = document.createElement('canvas'); c.width = Math.round(W * k); c.height = Math.round(H * k);
+      c.getContext('2d').drawImage(el, 0, 0, c.width, c.height);
+      for (const q of [0.92, 0.85, 0.75, 0.65, 0.5]) {
+        const d = c.toDataURL('image/jpeg', q);
+        if (d.length * 0.75 < 1.9 * 1024 * 1024) return d;
+      }
+      return c.toDataURL('image/jpeg', 0.4);
+    })()`;
+    const dataUrl = await w.webContents.executeJavaScript(js, true);
+    const dir = path.join(app.getPath('userData'), 'thumbs');
+    fs.mkdirSync(dir, { recursive: true });
+    const out = path.join(dir, `${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`);
+    fs.writeFileSync(out, Buffer.from(dataUrl.split(',')[1], 'base64'));
+    return out;
+  } finally {
+    w.destroy();
+  }
 }
 
 // ---------- Статистика ----------
@@ -789,7 +833,7 @@ function registerIpc() {
     const list = store.data.videos;
     let v = list.find((x) => x.id === video.id);
     if (!v) { v = { id: store.id(), createdAt: Date.now(), status: 'draft', results: [] }; list.unshift(v); }
-    for (const k of ['filePath', 'fileName', 'fileSize', 'durationSec', 'title', 'description', 'tags', 'accountIds', 'youtube', 'tiktok', 'pairId', 'lang', 'kind', 'note', 'plannedAt']) {
+    for (const k of ['thumbPath', 'thumbTime', 'filePath', 'fileName', 'fileSize', 'durationSec', 'title', 'description', 'tags', 'accountIds', 'youtube', 'tiktok', 'pairId', 'lang', 'kind', 'note', 'plannedAt']) {
       if (k in video) v[k] = video[k];
     }
     store.save(); pushState();
@@ -935,6 +979,29 @@ function registerIpc() {
     try { clip.proc?.kill(); } catch (_) { /* */ }
     clip.proc = null; clip.port = null;
     try { return { ok: true, ...(await startClipApp()) }; } catch (e) { return { ok: false, notFound: !!e.notFound, error: e.message }; }
+  });
+
+  handle('thumb:frame', async (filePath, time) => {
+    if (!filePath || !fs.existsSync(filePath)) throw new Error('Сначала выбери видео');
+    return { path: await renderImage({ video: filePath, time }), time };
+  });
+  handle('thumb:pick', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Картинка для превью', properties: ['openFile'], filters: [{ name: 'Картинки', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return { path: await renderImage({ image: r.filePaths[0] }) };
+  });
+  handle('thumb:setRemote', async (videoId, accountId) => {
+    const v = store.data.videos.find((x) => x.id === videoId);
+    const r = v?.results?.find((x) => x.accountId === accountId);
+    const acc = store.account(accountId);
+    if (!r?.remoteId || !acc) throw new Error('Видео ещё не загружено на YouTube');
+    const pick = await dialog.showOpenDialog(win, { title: 'Новое превью для YouTube', properties: ['openFile'], filters: [{ name: 'Картинки', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
+    if (pick.canceled || !pick.filePaths[0]) return false;
+    const img = await renderImage({ image: pick.filePaths[0] });
+    await youtube.setThumbnail(store, acc, r.remoteId, img);
+    v.thumbPath = img; r.thumbError = '';
+    store.save(); pushState();
+    return true;
   });
 
   handle('shell:open', (url) => shell.openExternal(url));

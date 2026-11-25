@@ -295,4 +295,21 @@ async function setSchedule(store, acc, videoId, iso, madeForKids = false) {
   });
 }
 
-module.exports = { connect, upload, fetchStats, fetchDetail, fetchMonetization, setSchedule };
+// Своя обложка (до 2 МБ, jpg/png). Работает, если канал подтверждён по телефону.
+async function setThumbnail(store, acc, videoId, imgPath) {
+  const t = await token(store, acc);
+  const data = fs.readFileSync(imgPath);
+  const type = /\.png$/i.test(imgPath) ? 'image/png' : 'image/jpeg';
+  const res = await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}&uploadType=media`, {
+    method: 'POST', headers: { Authorization: `Bearer ${t}`, 'Content-Type': type, 'Content-Length': String(data.length) }, body: data,
+  });
+  if (!res.ok) {
+    let msg = '';
+    try { msg = (await res.json()).error.message; } catch (_) { msg = `HTTP ${res.status}`; }
+    if (res.status === 403) msg = 'YouTube не разрешает своё превью: подтверди канал по телефону на youtube.com/verify и попробуй снова';
+    if (res.status === 429) msg = 'YouTube: слишком часто меняешь превью, попробуй позже';
+    throw new Error(msg);
+  }
+}
+
+module.exports = { connect, upload, fetchStats, fetchDetail, fetchMonetization, setSchedule, setThumbnail };

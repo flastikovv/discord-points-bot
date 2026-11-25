@@ -172,7 +172,7 @@ function pageVideos() {
     return `
     <div class="vcard" data-edit="${v.id}">
       <div class="thumb">
-        ${v.filePath ? `<video data-preview muted preload="metadata" src="${fileUrl(v.filePath)}"></video>` : `<div class="ph">${I.film}<span>Видео не выбрано</span></div>`}
+        ${v.thumbPath ? `<img src="${fileUrl(v.thumbPath)}" alt="">` : v.filePath ? `<video data-preview muted preload="metadata" src="${fileUrl(v.filePath)}"></video>` : `<div class="ph">${I.film}<span>Видео не выбрано</span></div>`}
         <div class="corner">${langBadge(v.lang)}${v.kind ? `<span class="badge">${GROUPS[v.kind]}</span>` : ''}</div>
         ${v.durationSec ? `<span class="dur">${dur(v.durationSec)}</span>` : ''}
       </div>
@@ -235,6 +235,15 @@ function openEditor(id, preset = {}) {
           </div>
           ${v.filePath ? `<div class="small muted" style="margin-top:8px;word-break:break-all">${esc(v.fileName || v.filePath)} · ${sizeMb(v.fileSize)} ${v.durationSec ? '· ' + dur(v.durationSec) : ''}</div>` : ''}
           <div class="subcard" style="margin-top:14px">
+            <h4>Превью (обложка)</h4>
+            ${v.thumbPath ? `<div class="thumb-pick"><img src="${fileUrl(v.thumbPath)}?${encodeURIComponent(v.thumbPath)}" alt="Превью"><button class="icon-btn" title="Убрать превью" id="thumbDel">${I.x}</button></div>` : ''}
+            <div class="row wrap" style="gap:6px">
+              <button class="btn sm" id="thumbFrame" ${v.filePath ? '' : 'disabled'}>${I.film}Текущий кадр</button>
+              <button class="btn sm" id="thumbPick">${I.upload}Своя картинка</button>
+            </div>
+            <div class="hint">Поставь видео выше на паузу на нужном моменте и нажми «Текущий кадр». YouTube возьмёт превью как есть (канал должен быть подтверждён по телефону). TikTok принимает только кадр из видео — для него будет кадр${v.thumbTime != null ? ` на ${dur(v.thumbTime)}` : ' на 1-й секунде'}.</div>
+          </div>
+          <div class="subcard">
             <h4>Тип и язык</h4>
             <div class="row wrap" style="margin-bottom:10px">
               <div class="seg">${[['stories', 'Истории'], ['clips', 'Нарезки']].map(([k, t]) => `<button data-kind="${k}" class="${v.kind === k ? 'on' : ''}">${t}</button>`).join('')}</div>
@@ -342,6 +351,20 @@ function openEditor(id, preset = {}) {
       collect();
       setFile(await call('file:info', window.api.pathFor(f)));
     };
+    if ($('#thumbFrame')) $('#thumbFrame').onclick = async () => {
+      collect();
+      const pvEl = $('#pv');
+      const t = pvEl ? pvEl.currentTime : 1;
+      $('#thumbFrame').disabled = true;
+      try { const r = await call('thumb:frame', v.filePath, t); v.thumbPath = r.path; v.thumbTime = r.time; toast(`Превью — кадр на ${dur(r.time)}`); } catch (_) { /* */ }
+      draw();
+    };
+    $('#thumbPick').onclick = async () => {
+      collect();
+      try { const r = await call('thumb:pick'); if (r) { v.thumbPath = r.path; toast('Превью выбрано'); } } catch (_) { /* */ }
+      draw();
+    };
+    if ($('#thumbDel')) $('#thumbDel').onclick = () => { collect(); v.thumbPath = null; v.thumbTime = null; draw(); };
     $('#title').oninput = (e) => { const n = e.target.value.length; const c = $('#tcount'); c.textContent = `${n}/100`; c.classList.toggle('over', n > 100); };
     root.querySelectorAll('[data-acc]').forEach((cb) => { cb.onchange = () => { collect(); const id = cb.dataset.acc; v.accountIds = cb.checked ? [...new Set([...v.accountIds, id])] : v.accountIds.filter((x) => x !== id); draw(); }; });
     const autoPick = () => {
@@ -452,6 +475,8 @@ function pagePublished() {
             ${r.status === 'uploading' ? `<div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span><button class="btn sm danger" data-cancelup="${v.id}|${r.accountId}">${I.x}Отменить</button>` : ''}
             ${r.status === 'error' ? `<span class="err">${esc(r.error)}</span><button class="btn sm" data-retry="${v.id}|${r.accountId}">${I.refresh}Повторить</button>` : '<span class="grow"></span>'}
             ${r.private && r.status === 'published' ? '<span class="small dim">приватно</span>' : ''}
+            ${r.thumbError ? `<span class="err">Превью: ${esc(r.thumbError)}</span>` : ''}
+            ${(r.platform || a?.platform) === 'youtube' && r.remoteId && ['published', 'scheduled'].includes(r.status) ? `<button class="btn sm" data-setthumb="${v.id}|${r.accountId}">${I.film}Сменить превью</button>` : ''}
             ${r.url ? `<button class="btn sm ghost" data-open="${esc(r.url)}">${I.link}Открыть</button>` : ''}
           </div>`;
         }).join('')}</div>
@@ -1137,7 +1162,7 @@ function pageTelegram() {
 
 // ---------- События ----------
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove],[data-aprompt],[data-apaste],[data-cancelup],[data-resched],[data-cliprestart],[data-clipdir],[data-clipretry],[data-clipimport],[data-gemsave2],[data-gemcheck],[data-asstsend],[data-asstclear],[data-quick],[data-msgcopy],[data-askvid],[data-askan]');
+  const t = e.target.closest('[data-page],[data-new],[data-edit],[data-publish],[data-schedule],[data-dup],[data-del],[data-vf],[data-retry],[data-open],[data-unsched],[data-showfile],[data-sacc],[data-speriod],[data-srefresh],[data-ssort],[data-ssel],[data-detail],[data-aperiod],[data-aacc],[data-arun],[data-asel],[data-adel],[data-acopy],[data-gostat],[data-addacc],[data-relogin],[data-arm],[data-savekeys],[data-tnew],[data-tedit],[data-tdel],[data-sview],[data-tgsave],[data-tgsaveopts],[data-tgtest],[data-tgunlink],[data-tgremove],[data-aprompt],[data-apaste],[data-cancelup],[data-resched],[data-cliprestart],[data-clipdir],[data-clipretry],[data-clipimport],[data-gemsave2],[data-gemcheck],[data-asstsend],[data-asstclear],[data-quick],[data-msgcopy],[data-askvid],[data-askan],[data-setthumb]');
   if (!t || t.closest('#modalRoot .modal') && !t.dataset.open) return;
   const d = t.dataset;
   if (d.open) { e.preventDefault(); call('shell:open', d.open); return; }
@@ -1214,6 +1239,13 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (d.resched) return rescheduleDialog(d.resched);
+  if (d.setthumb) {
+    const [vid, aid] = d.setthumb.split('|');
+    t.disabled = true;
+    try { if (await call('thumb:setRemote', vid, aid)) toast('Превью на YouTube обновлено'); } catch (_) { /* */ }
+    t.disabled = false;
+    return;
+  }
   if ('cliprestart' in d) return clipEnsure(true);
   if ('clipretry' in d) { ui.clip.status = 'idle'; return clipEnsure(false); }
   if ('clipdir' in d) { try { const r = await call('clip:pickDir'); if (r) { ui.clip.status = 'idle'; clipEnsure(false); } } catch (_) { /* */ } return; }
